@@ -1,17 +1,52 @@
 def calculate_quality_score(profile: dict):
-    score = 100
+    """
+    Calculates weighted normalized quality score.
+
+    Weights:
+    - Completeness → 40%
+    - Duplicate Score → 30%
+    - Outlier Score → 30%
+    """
+
+    rows = profile["rows"]
+    columns = profile["columns"]
+
+    total_cells = rows * columns if rows * columns > 0 else 1
+
+    # ---- Completeness Score ----
+    completeness_ratio = profile["completeness_ratio"]
+    completeness_score = completeness_ratio * 100
+
+    # ---- Duplicate Score ----
+    duplicate_ratio = profile["duplicate_rows"] / rows if rows > 0 else 0
+    duplicate_score = (1 - duplicate_ratio) * 100
+
+    # ---- Outlier Score ----
+    outlier_ratio = profile["outlier_count"] / rows if rows > 0 else 0
+    outlier_score = (1 - outlier_ratio) * 100
+
+    # ---- Weighted Final Score ----
+    final_score = (
+        0.4 * completeness_score +
+        0.3 * duplicate_score +
+        0.3 * outlier_score
+    )
+
+    final_score = round(max(0, min(final_score, 100)), 2)
+
+    # ---- Generate Reasons ----
     reasons = []
 
-    if profile["missing_total"] > 0:
-        penalty = min(30, profile["missing_total"])
-        score -= penalty
+    if profile["missing_values"] > 0:
         reasons.append("Dataset contains missing values.")
 
-    if profile["duplicates"] > 0:
-        penalty = min(20, profile["duplicates"] * 2)
-        score -= penalty
+    if profile["duplicate_rows"] > 0:
         reasons.append("Duplicate rows detected.")
 
-    score = max(0, score)
+    if profile["outlier_count"] > 0:
+        reasons.append("Outliers detected in numeric columns.")
 
-    return score, reasons
+    if not reasons:
+        reasons.append("Dataset is clean and reliable.")
+
+    return final_score, reasons
