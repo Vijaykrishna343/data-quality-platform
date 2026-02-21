@@ -1,22 +1,20 @@
 import axios from "axios";
 
-const API = axios.create({
-  baseURL: "http://127.0.0.1:8000",
-});
+const API_BASE = "http://127.0.0.1:8000";
 
-export const analyzeDataset = (formData) =>
-  API.post("/analyze/", formData, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
+export const analyzeDataset = async (file) => {
+  const formData = new FormData();
+  formData.append("file", file);
 
-export const cleanDataset = (formData) =>
-  API.post("/clean/", formData, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
+  const response = await axios.post(
+    `${API_BASE}/analyze/`,
+    formData,
+    {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    }
+  );
 
-export const getRecommendations = (formData) =>
-  API.post("/recommend/", formData, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
-
-export default API;
+  return response.data;
+};

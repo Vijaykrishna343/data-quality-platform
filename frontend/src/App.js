@@ -9,7 +9,7 @@ function App() {
 
   return (
     <div>
-      <h1>Data Quality Platform</h1>
+      <h1>Intelligent Data Quality Platform</h1>
 
       <FileUploader setAnalysisData={setAnalysisData} />
 
