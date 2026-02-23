@@ -1,15 +1,21 @@
-export default function StatsCards({ rows, columns, duplicates }) {
+export default function StatsCards({
+  rows,
+  columns,
+  duplicates,
+  emptyRows
+}) {
   if (
     rows === undefined ||
     columns === undefined ||
-    duplicates === undefined
+    duplicates === undefined ||
+    emptyRows === undefined
   ) {
     return null;
   }
 
   return (
-    <div className="grid md:grid-cols-3 gap-6">
-      
+    <div className="grid md:grid-cols-4 gap-6">
+
       <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
         <h3 className="text-white/60 text-sm mb-2">
           Total Rows
@@ -34,6 +40,16 @@ export default function StatsCards({ rows, columns, duplicates }) {
         </h3>
         <p className="text-2xl font-semibold text-red-400">
           {duplicates.toLocaleString()}
+        </p>
+      </div>
+
+      {/* ✅ New Empty Rows Card */}
+      <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
+        <h3 className="text-white/60 text-sm mb-2">
+          Empty Rows
+        </h3>
+        <p className="text-2xl font-semibold text-yellow-400">
+          {emptyRows.toLocaleString()}
         </p>
       </div>
 
