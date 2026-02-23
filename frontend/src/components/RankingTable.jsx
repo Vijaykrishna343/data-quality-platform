@@ -2,7 +2,25 @@ import { motion } from "framer-motion";
 import { AlertTriangle, CheckCircle } from "lucide-react";
 
 export default function RankingTable({ data }) {
-  if (!data || !Array.isArray(data)) return null;
+  if (!data || !Array.isArray(data) || data.length === 0) {
+    return null;
+  }
+
+  // Convert backend structure into usable score
+  const formattedData = data.map((item) => {
+    const missing = Number(item.missing_values) || 0;
+    const unique = Number(item.unique_values) || 0;
+
+    const score = Math.max(0, Math.min(100, unique - missing));
+
+    return {
+      column: item.column,
+      score,
+    };
+  });
+
+  // Sort by score descending
+  const sortedData = formattedData.sort((a, b) => b.score - a.score);
 
   const getBadge = (score) => {
     if (score >= 70)
@@ -15,7 +33,7 @@ export default function RankingTable({ data }) {
   const getRecommendation = (score) => {
     if (score < 50)
       return {
-        text: "Low importance score",
+        text: "Needs attention",
         icon: <AlertTriangle size={16} className="text-red-400" />,
       };
     return {
@@ -31,20 +49,20 @@ export default function RankingTable({ data }) {
       </h2>
 
       <div className="space-y-5">
-        {data.map((item, index) => {
+        {sortedData.map((item, index) => {
           const badge = getBadge(item.score);
           const recommendation = getRecommendation(item.score);
 
           return (
             <motion.div
-              key={index}
+              key={item.column}
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: index * 0.05 }}
               className="grid grid-cols-4 items-center gap-6"
             >
               {/* Column Name */}
-              <div className="text-white/80 font-medium">
+              <div className="text-white/80 font-medium truncate">
                 {item.column}
               </div>
 

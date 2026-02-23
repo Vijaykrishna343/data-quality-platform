@@ -5,9 +5,11 @@ import "react-circular-progressbar/dist/styles.css";
 export default function ScoreComparison({ data }) {
   if (!data) return null;
 
-  const before = data.before_score || 0;
-  const after = data.after_score || 0;
-  const improvement = (after - before).toFixed(2);
+  const before = Number(data.before_score) || 0;
+  const after = Number(data.after_score) || 0;
+
+  const improvementValue = after - before;
+  const improvement = improvementValue.toFixed(2);
 
   const Card = ({ title, score, color }) => (
     <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-8 w-full">
@@ -16,7 +18,8 @@ export default function ScoreComparison({ data }) {
       <div className="w-40 mx-auto">
         <CircularProgressbar
           value={score}
-          text={`${score}`}
+          maxValue={100}
+          text={`${score}%`}
           styles={buildStyles({
             pathColor: color,
             textColor: color,
@@ -25,7 +28,9 @@ export default function ScoreComparison({ data }) {
         />
       </div>
 
-      <p className="text-center mt-4 text-white/70">Quality Score</p>
+      <p className="text-center mt-4 text-white/70">
+        Quality Score
+      </p>
     </div>
   );
 
@@ -42,8 +47,15 @@ export default function ScoreComparison({ data }) {
         animate={{ opacity: 1 }}
         className="text-center"
       >
-        <span className="px-5 py-2 rounded-full bg-green-500/20 text-green-400 border border-green-500/30">
-          Improvement: +{improvement}%
+        <span
+          className={`px-5 py-2 rounded-full border ${
+            improvementValue >= 0
+              ? "bg-green-500/20 text-green-400 border-green-500/30"
+              : "bg-red-500/20 text-red-400 border-red-500/30"
+          }`}
+        >
+          Improvement: {improvementValue > 0 ? "+" : ""}
+          {improvement}%
         </span>
       </motion.div>
     </div>

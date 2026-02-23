@@ -1,14 +1,44 @@
 import { motion } from "framer-motion";
 
+// Utility: Calculate correlation between two arrays
+function calculateCorrelation(x, y) {
+  const n = x.length;
+  if (n === 0) return 0;
+
+  const meanX = x.reduce((a, b) => a + b, 0) / n;
+  const meanY = y.reduce((a, b) => a + b, 0) / n;
+
+  const numerator = x.reduce(
+    (sum, xi, i) => sum + (xi - meanX) * (y[i] - meanY),
+    0
+  );
+
+  const denominatorX = Math.sqrt(
+    x.reduce((sum, xi) => sum + Math.pow(xi - meanX, 2), 0)
+  );
+
+  const denominatorY = Math.sqrt(
+    y.reduce((sum, yi) => sum + Math.pow(yi - meanY, 2), 0)
+  );
+
+  const denominator = denominatorX * denominatorY;
+
+  if (denominator === 0) return 0;
+
+  return numerator / denominator;
+}
+
 export default function CorrelationMatrix({ data }) {
-  if (!data || data.length === 0) return null;
+  if (!data || !Array.isArray(data) || data.length === 0) {
+    return null;
+  }
 
-  const columns = Object.keys(data[0]);
+  // Extract numeric columns only
+  const columns = Object.keys(data[0]).filter((col) =>
+    data.every((row) => !isNaN(parseFloat(row[col])))
+  );
 
-  // Simple fake correlation generator (demo style)
-  const generateValue = () => {
-    return (Math.random() * 0.8 + 0.1).toFixed(2);
-  };
+  if (columns.length === 0) return null;
 
   return (
     <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-8">
@@ -41,11 +71,40 @@ export default function CorrelationMatrix({ data }) {
                   {rowCol}
                 </td>
 
-                {columns.map((col, colIndex) => (
-                  <td key={colIndex} className="p-3">
-                    {rowCol === col ? "1.00" : generateValue()}
-                  </td>
-                ))}
+                {columns.map((col, colIndex) => {
+                  if (rowCol === col) {
+                    return (
+                      <td key={colIndex} className="p-3 text-cyan-400">
+                        1.00
+                      </td>
+                    );
+                  }
+
+                  const x = data.map((row) =>
+                    parseFloat(row[rowCol])
+                  );
+                  const y = data.map((row) =>
+                    parseFloat(row[col])
+                  );
+
+                  const corr = calculateCorrelation(x, y);
+                  const value = corr.toFixed(2);
+
+                  return (
+                    <td
+                      key={colIndex}
+                      className={`p-3 ${
+                        Math.abs(corr) > 0.7
+                          ? "text-green-400"
+                          : Math.abs(corr) > 0.4
+                          ? "text-yellow-400"
+                          : "text-white/70"
+                      }`}
+                    >
+                      {value}
+                    </td>
+                  );
+                })}
               </motion.tr>
             ))}
           </tbody>

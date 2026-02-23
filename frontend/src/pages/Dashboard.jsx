@@ -1,6 +1,5 @@
 import { useState } from "react";
 import axios from "axios";
-import { motion } from "framer-motion";
 import { Sparkles } from "lucide-react";
 
 import FileUploader from "../components/FileUploader";
@@ -21,26 +20,35 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false);
 
   const handleRunAnalysis = async (config) => {
-    if (!rawData?.file) return;
+    if (!rawData?.file) {
+      alert("Please upload a file first.");
+      return;
+    }
 
     setLoading(true);
+    setAnalysisResult(null);
 
     try {
       const formData = new FormData();
       formData.append("file", rawData.file);
-      formData.append("remove_duplicates", config.removeDuplicates);
+      formData.append("remove_duplicates", String(config.removeDuplicates));
       formData.append("missing_strategy", config.missingStrategy);
       formData.append("outlier_method", config.outlierMethod);
 
       const response = await axios.post(
         "http://127.0.0.1:8000/analyze/",
-        formData
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        }
       );
 
       setAnalysisResult(response.data);
     } catch (error) {
-      console.error(error);
-      alert("Analysis failed.");
+      console.error("Analysis error:", error);
+      alert("Analysis failed. Check backend.");
     }
 
     setLoading(false);
@@ -73,10 +81,19 @@ export default function Dashboard() {
           <FileUploader setData={setRawData} />
         )}
 
+        {/* After Upload – Before Analysis */}
         {rawData && !analysisResult && (
           <>
-            <StatsCards data={rawData.original_preview} />
-            <ColumnProfiles data={rawData.original_preview} />
+            <StatsCards
+              rows={rawData?.rows_before}
+              columns={rawData?.columns}
+              duplicates={rawData?.duplicate_rows}
+            />
+
+            <ColumnProfiles
+              data={rawData?.original_preview || []}
+            />
+
             <CleaningPanel
               onRunAnalysis={handleRunAnalysis}
               loading={loading}
@@ -84,19 +101,29 @@ export default function Dashboard() {
           </>
         )}
 
+        {/* After Analysis */}
         {analysisResult && (
           <>
             <ScoreComparison data={analysisResult} />
 
             <MetricsBreakdown
-              beforeMetrics={analysisResult.before_metrics}
-              afterMetrics={analysisResult.after_metrics}
+              beforeMetrics={analysisResult?.before_metrics || {}}
+              afterMetrics={analysisResult?.after_metrics || {}}
             />
 
-            <ImportanceChart data={analysisResult.column_importance} />
-            <RankingTable data={analysisResult.column_importance} />
-            <CorrelationMatrix data={analysisResult.cleaned_preview} />
-            <CleanedTable data={analysisResult.cleaned_preview} />
+            {analysisResult?.column_importance && (
+              <>
+                <ImportanceChart data={analysisResult.column_importance} />
+                <RankingTable data={analysisResult.column_importance} />
+              </>
+            )}
+
+            {analysisResult?.cleaned_preview?.length > 0 && (
+              <>
+                <CorrelationMatrix data={analysisResult.cleaned_preview} />
+                <CleanedTable data={analysisResult.cleaned_preview} />
+              </>
+            )}
           </>
         )}
       </div>

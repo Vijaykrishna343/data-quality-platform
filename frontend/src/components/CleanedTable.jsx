@@ -1,58 +1,85 @@
-export default function CleanedTable({ rows }) {
-  if (!rows || rows.length === 0) return null;
+export default function CleanedTable({ data }) {
+  if (!data || !Array.isArray(data) || data.length === 0) {
+    return null;
+  }
 
-  const headers = Object.keys(rows[0]);
+  const headers = Object.keys(data[0]);
+
+  const escapeCSVValue = (value) => {
+    if (value === null || value === undefined) return "";
+
+    const stringValue = String(value);
+
+    if (stringValue.includes(",") || stringValue.includes('"')) {
+      return `"${stringValue.replace(/"/g, '""')}"`;
+    }
+
+    return stringValue;
+  };
 
   const downloadCSV = () => {
-    const csv =
+    const csvContent =
       headers.join(",") +
       "\n" +
-      rows.map(row =>
-        headers.map(h => row[h]).join(",")
-      ).join("\n");
+      data
+        .map((row) =>
+          headers.map((h) => escapeCSVValue(row[h])).join(",")
+        )
+        .join("\n");
 
-    const blob = new Blob([csv], { type: "text/csv" });
+    const blob = new Blob([csvContent], {
+      type: "text/csv;charset=utf-8;",
+    });
+
     const url = URL.createObjectURL(blob);
-
     const a = document.createElement("a");
+
     a.href = url;
     a.download = "cleaned_dataset.csv";
     a.click();
+
+    URL.revokeObjectURL(url);
   };
 
   return (
     <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-8">
-      
-      <div className="flex justify-between mb-4">
+      <div className="flex justify-between items-center mb-6">
         <h2 className="text-xl font-semibold">
           Cleaned Dataset Preview
         </h2>
 
         <button
           onClick={downloadCSV}
-          className="px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-purple-500 hover:opacity-90"
+          className="px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-purple-500 hover:opacity-90 transition"
         >
           Download CSV
         </button>
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm text-white/80">
           <thead>
             <tr>
-              {headers.map((h, i) => (
-                <th key={i} className="pb-2 pr-4 text-gray-400">
-                  {h}
+              {headers.map((header) => (
+                <th
+                  key={header}
+                  className="pb-3 pr-6 text-left text-gray-400"
+                >
+                  {header}
                 </th>
               ))}
             </tr>
           </thead>
+
           <tbody>
-            {rows.slice(0, 10).map((row, i) => (
-              <tr key={i} className="border-t border-white/10">
-                {headers.map((h, j) => (
-                  <td key={j} className="py-2 pr-4">
-                    {row[h]}
+            {data.slice(0, 15).map((row, rowIndex) => (
+              <tr
+                key={rowIndex}
+                className="border-t border-white/10"
+              >
+                {headers.map((header) => (
+                  <td key={header} className="py-2 pr-6">
+                    {row[header] ?? ""}
                   </td>
                 ))}
               </tr>
@@ -60,6 +87,12 @@ export default function CleanedTable({ rows }) {
           </tbody>
         </table>
       </div>
+
+      {data.length > 15 && (
+        <p className="mt-4 text-xs text-white/50">
+          Showing first 15 rows of {data.length}
+        </p>
+      )}
     </div>
   );
 }
