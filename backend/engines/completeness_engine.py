@@ -1,8 +1,17 @@
-def calculate_completeness(df):
-    total_cells = len(df) * len(df.columns)
-    total_missing = df.isna().sum().sum()
+import pandas as pd
 
-    if total_cells == 0:
-        return 0
 
-    return (1 - total_missing / total_cells) * 100
+class CompletenessEngine:
+
+    @staticmethod
+    def calculate(df: pd.DataFrame) -> float:
+        total_cells = len(df) * len(df.columns)
+
+        if total_cells == 0:
+            return 0.0
+
+        total_missing = df.isna().sum().sum()
+
+        completeness = (1 - (total_missing / total_cells)) * 100
+
+        return round(float(completeness), 2)

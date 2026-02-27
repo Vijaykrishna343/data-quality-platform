@@ -2,15 +2,13 @@ from fastapi import APIRouter, HTTPException
 import pandas as pd
 import os
 
-from backend.services.recommendation_service import RecommendationService
+router = APIRouter()
 
-router = APIRouter(prefix="/recommend", tags=["Recommendation"])
-
-UPLOAD_DIR = "backend/uploads"
+UPLOAD_DIR = "backend/storage/uploads"
 
 
 @router.get("/{dataset_id}")
-def get_recommendations(dataset_id: str):
+def recommend(dataset_id: str):
 
     file_path = os.path.join(UPLOAD_DIR, f"{dataset_id}.csv")
 
@@ -19,6 +17,12 @@ def get_recommendations(dataset_id: str):
 
     df = pd.read_csv(file_path)
 
-    recommendations = RecommendationService.generate(df)
+    recommendations = []
+
+    if df.isnull().sum().sum() > 0:
+        recommendations.append("Dataset contains missing values.")
+
+    if df.duplicated().sum() > 0:
+        recommendations.append("Dataset contains duplicate rows.")
 
     return {"recommendations": recommendations}

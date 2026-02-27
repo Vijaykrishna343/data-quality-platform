@@ -1,290 +1,241 @@
 import React, { useEffect, useState } from "react";
+import { motion } from "framer-motion";
 import { useParams } from "react-router-dom";
 import {
-  getProfile,
-  getClassification,
-  getRecommendation,
+  getAnalytics,
   simulateCleaning,
   fetchDatasetPage,
   downloadCleanedDataset,
 } from "../services/api";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
+
+const PAGE_SIZE = 20;
 
 const DashboardPage = () => {
   const { datasetId } = useParams();
 
-  const [profile, setProfile] = useState(null);
-  const [classification, setClassification] = useState(null);
-  const [recommendation, setRecommendation] = useState(null);
-  const [preview, setPreview] = useState(null);
+  const [analytics, setAnalytics] = useState(null);
+  const [cleanResult, setCleanResult] = useState(null);
 
-  const [loading, setLoading] = useState(true);
-  const [cleaningResult, setCleaningResult] = useState(null);
-
+  const [previewRows, setPreviewRows] = useState([]);
+  const [previewColumns, setPreviewColumns] = useState([]);
   const [page, setPage] = useState(1);
-  const pageSize = 20;
+  const [totalRows, setTotalRows] = useState(0);
 
-  const [cleaningOptions, setCleaningOptions] = useState({
-    handle_missing: true,
-    remove_duplicates: true,
-    outlier_method: "none",
-  });
+  const [handleMissing, setHandleMissing] = useState(true);
+  const [removeDuplicates, setRemoveDuplicates] = useState(true);
+  const [outlierMethod, setOutlierMethod] = useState("iqr");
+  const [dropColumns, setDropColumns] = useState([]);
 
-  /* ================= LOAD INITIAL DATA ================= */
+  const [showPreview, setShowPreview] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        setLoading(true);
+    initialize();
+  }, []);
 
-        const profileRes = await getProfile(datasetId);
-        const classRes = await getClassification(datasetId);
-        const recRes = await getRecommendation(datasetId);
-        const previewRes = await fetchDatasetPage(datasetId, page, pageSize);
+  const initialize = async () => {
+    setLoading(true);
+    const res = await getAnalytics(datasetId);
+    setAnalytics(res.data);
+    setLoading(false);
+  };
 
-        setProfile(profileRes.data);
-        setClassification(classRes.data);
-        setRecommendation(recRes.data);
-        setPreview(previewRes.data);
-      } catch (error) {
-        console.error("Dashboard load error:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
+  const loadPreview = async (pageNumber) => {
+    const res = await fetchDatasetPage(datasetId, pageNumber, PAGE_SIZE);
 
-    if (datasetId) loadData();
-  }, [datasetId, page]);
+    setPreviewRows(res.data.rows || []);
+    setPreviewColumns(res.data.columns || []);
+    setTotalRows(res.data.total_rows || 0);
+    setPage(pageNumber);
+  };
 
-  /* ================= CLEANING ================= */
+  const totalPages = Math.ceil(totalRows / PAGE_SIZE);
 
   const runCleaning = async () => {
-    try {
-      const res = await simulateCleaning(datasetId, cleaningOptions);
-      setCleaningResult(res.data);
+    const res = await simulateCleaning(datasetId, {
+      handle_missing: handleMissing,
+      remove_duplicates: removeDuplicates,
+      outlier_method: outlierMethod,
+      drop_columns: dropColumns,
+    });
 
-      const updatedPreview = await fetchDatasetPage(datasetId, 1, pageSize);
-      setPreview(updatedPreview.data);
-      setPage(1);
-    } catch (err) {
-      console.error("Cleaning failed:", err);
+    setCleanResult(res.data);
+
+    await loadPreview(1);
+    setShowPreview(true);
+  };
+
+  const toggleColumn = (col) => {
+    if (dropColumns.includes(col)) {
+      setDropColumns(dropColumns.filter((c) => c !== col));
+    } else {
+      setDropColumns([...dropColumns, col]);
     }
   };
 
-  /* ================= DOWNLOAD ================= */
+  if (!analytics)
+    return <div className="p-10 text-white">Loading analytics...</div>;
 
-  const handleDownload = async () => {
-    try {
-      const response = await downloadCleanedDataset(datasetId);
-      const blob = new Blob([response.data]);
-      const url = window.URL.createObjectURL(blob);
-
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute("download", "cleaned_dataset.csv");
-      document.body.appendChild(link);
-      link.click();
-    } catch (err) {
-      console.error("Download failed:", err);
-    }
-  };
-
-  if (loading) return <div className="p-10 text-white">Loading...</div>;
-
-  if (!profile) return <div className="p-10 text-red-500">Failed to load</div>;
+  const importanceData = Object.entries(
+    analytics.importance || {}
+  ).map(([key, value]) => ({
+    name: key,
+    value,
+  }));
 
   return (
-    <div className="p-8 text-white space-y-8">
+    <div className="p-8 text-white space-y-10">
 
-      {/* ================= STATS ================= */}
-
-      <div className="grid grid-cols-4 gap-6">
-        <StatCard title="Rows" value={profile.rows} />
-        <StatCard title="Columns" value={profile.columns} />
-        <StatCard title="Missing %" value={profile.missing_percentage} />
-        <StatCard title="Duplicates %" value={profile.duplicate_percentage} />
-      </div>
-
-      {/* ================= QUALITY SCORE ================= */}
-
-      <Section title="Quality Score (Before Cleaning)">
-        <h2 className="text-3xl font-bold text-yellow-400">
-          {cleaningResult?.before_score || profile.quality_score || "N/A"}
-        </h2>
+      {/* ================= OVERVIEW ================= */}
+      <Section title="Dataset Overview (Before Cleaning)">
+        <StatsGrid profile={analytics.profile} />
       </Section>
 
-      {/* ================= FEATURE IMPORTANCE ================= */}
+      {/* ================= IMPORTANCE ================= */}
+      <Section title="Column Importance">
+        <ResponsiveContainer width="100%" height={300}>
+          <BarChart data={importanceData}>
+            <XAxis dataKey="name" />
+            <YAxis />
+            <Tooltip />
+            <Bar dataKey="value" fill="#6366f1" radius={[6, 6, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
 
-      {profile.importance && (
-        <Section title="Feature Importance (Before Cleaning)">
-          <div className="grid grid-cols-2 gap-4">
-            {Object.entries(profile.importance).map(([key, value]) => (
-              <div key={key} className="flex justify-between border-b py-1">
-                <span>{key}</span>
-                <span>{value}</span>
-              </div>
-            ))}
-          </div>
-        </Section>
-      )}
+        <ImportanceTable data={importanceData} />
+      </Section>
 
-      {/* ================= RECOMMENDATIONS ================= */}
-
-      {recommendation?.before?.length > 0 && (
-        <Section title="Smart Cleaning Recommendations">
-          {recommendation.before.map((rec, index) => (
-            <div key={index} className="mb-2">
-              • {rec.column} — {rec.issue}
-            </div>
+      {/* ================= MANUAL DROP ================= */}
+      <Section title="Manual Column Removal">
+        <div className="grid grid-cols-3 gap-3">
+          {importanceData.map((col) => (
+            <label key={col.name} className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                checked={dropColumns.includes(col.name)}
+                onChange={() => toggleColumn(col.name)}
+              />
+              <span>{col.name}</span>
+            </label>
           ))}
-        </Section>
-      )}
-
-      {/* ================= CLASSIFICATION ================= */}
-
-      {classification && (
-        <Section title="Column Classification">
-          {Object.entries(classification).map(([type, cols]) => (
-            <div key={type} className="mb-4">
-              <h4 className="font-semibold capitalize">{type}</h4>
-              <div>{cols.length ? cols.join(", ") : "None"}</div>
-            </div>
-          ))}
-        </Section>
-      )}
+        </div>
+      </Section>
 
       {/* ================= CLEANING OPTIONS ================= */}
-
       <Section title="Cleaning Options">
         <div className="space-y-4">
-          <label>
-            <input
-              type="checkbox"
-              checked={cleaningOptions.handle_missing}
-              onChange={(e) =>
-                setCleaningOptions({
-                  ...cleaningOptions,
-                  handle_missing: e.target.checked,
-                })
-              }
-            />{" "}
-            Handle Missing Values
-          </label>
+          <Checkbox
+            label="Handle Missing Values"
+            value={handleMissing}
+            setValue={setHandleMissing}
+          />
+          <Checkbox
+            label="Remove Duplicates"
+            value={removeDuplicates}
+            setValue={setRemoveDuplicates}
+          />
 
-          <label>
-            <input
-              type="checkbox"
-              checked={cleaningOptions.remove_duplicates}
-              onChange={(e) =>
-                setCleaningOptions({
-                  ...cleaningOptions,
-                  remove_duplicates: e.target.checked,
-                })
-              }
-            />{" "}
-            Remove Duplicates
-          </label>
-
-          <div>
-            Outlier Method:
-            <select
-              className="ml-2 text-black"
-              value={cleaningOptions.outlier_method}
-              onChange={(e) =>
-                setCleaningOptions({
-                  ...cleaningOptions,
-                  outlier_method: e.target.value,
-                })
-              }
-            >
-              <option value="none">None</option>
-              <option value="iqr">IQR</option>
-              <option value="zscore">Z-Score</option>
-            </select>
-          </div>
+          <select
+            value={outlierMethod}
+            onChange={(e) => setOutlierMethod(e.target.value)}
+            className="bg-black border px-3 py-2 rounded"
+          >
+            <option value="none">No Outlier Removal</option>
+            <option value="iqr">IQR Method</option>
+            <option value="isolation">Isolation Forest</option>
+          </select>
 
           <button
             onClick={runCleaning}
-            className="bg-purple-600 px-4 py-2 rounded"
+            className="bg-indigo-600 px-6 py-2 rounded hover:scale-105 transition"
           >
             Run Smart Cleaning
           </button>
         </div>
       </Section>
 
-      {/* ================= CLEANING IMPACT ================= */}
+      {/* ================= RESULTS ================= */}
+      {cleanResult && (
+        <Section title="Cleaning Results">
+          <div className="flex gap-10 text-lg">
+            <ScoreCard label="Before Score" value={cleanResult.score_before} />
+            <ScoreCard label="After Score" value={cleanResult.score_after} />
+            <ScoreCard
+              label="Improvement"
+              value={`+${cleanResult.improvement}`}
+            />
+          </div>
 
-      {cleaningResult && (
-        <Section title="Cleaning Impact">
-          <div>Before: {cleaningResult.before_score}</div>
-          <div>After: {cleaningResult.after_score}</div>
-        </Section>
-      )}
-
-      {/* ================= AUTOML READINESS ================= */}
-
-      {cleaningResult && (
-        <Section title="AutoML Readiness">
-          <div className="bg-green-600 text-center py-3 rounded">
-            ML Ready
+          <div className="mt-4">
+            <AutoMLBadge score={cleanResult.score_after} />
           </div>
         </Section>
       )}
 
-      {/* ================= DATA PREVIEW ================= */}
-
-      {preview && (
+      {/* ================= PREVIEW ================= */}
+      {showPreview && (
         <Section title="Cleaned Dataset Preview">
-          <table className="w-full text-sm">
-            <thead>
-              <tr>
-                {preview.columns.map((col) => (
-                  <th key={col} className="border px-2 py-1">
-                    {col}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {preview.rows.map((row, i) => (
-                <tr key={i}>
-                  {preview.columns.map((col) => (
-                    <td key={col} className="border px-2 py-1">
-                      {row[col]}
-                    </td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border border-white/10">
+              <thead>
+                <tr>
+                  {previewColumns.map((col) => (
+                    <th key={col} className="border px-2 py-1">
+                      {col}
+                    </th>
                   ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {previewRows.map((row, i) => (
+                  <tr key={i}>
+                    {previewColumns.map((col) => (
+                      <td key={col} className="border px-2 py-1">
+                        {row[col]}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
           {/* Pagination */}
-          <div className="flex justify-between mt-4">
+          <div className="flex justify-between mt-6 items-center">
             <button
               disabled={page === 1}
-              onClick={() => setPage(page - 1)}
-              className="bg-gray-600 px-4 py-2 rounded"
+              onClick={() => loadPreview(page - 1)}
+              className="bg-gray-700 px-4 py-2 rounded disabled:opacity-50"
             >
               Previous
             </button>
 
-            <div>
-              Page {page} of {preview.total_pages}
-            </div>
+            <span>
+              Page {page} of {totalPages}
+            </span>
 
             <button
-              disabled={page === preview.total_pages}
-              onClick={() => setPage(page + 1)}
-              className="bg-gray-600 px-4 py-2 rounded"
+              disabled={page === totalPages}
+              onClick={() => loadPreview(page + 1)}
+              className="bg-gray-700 px-4 py-2 rounded disabled:opacity-50"
             >
               Next
             </button>
           </div>
 
           <button
-            onClick={handleDownload}
-            className="mt-4 bg-green-600 px-4 py-2 rounded"
+            onClick={() => downloadCleanedDataset(datasetId)}
+            className="mt-6 bg-green-600 px-6 py-2 rounded hover:scale-105 transition"
           >
-            Download Cleaned Dataset
+            Download Cleaned CSV
           </button>
         </Section>
       )}
@@ -294,18 +245,74 @@ const DashboardPage = () => {
 
 /* ================= COMPONENTS ================= */
 
-const StatCard = ({ title, value }) => (
-  <div className="bg-gray-800 p-4 rounded">
-    <div className="text-sm">{title}</div>
-    <div className="text-xl font-bold">{value}</div>
+const Section = ({ title, children }) => (
+  <motion.div
+    initial={{ opacity: 0, y: 10 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.4 }}
+    className="bg-white/5 p-6 rounded-xl border border-white/10 backdrop-blur-md"
+  >
+    <h2 className="text-xl mb-6 font-semibold">{title}</h2>
+    {children}
+  </motion.div>
+);
+
+const StatsGrid = ({ profile }) => (
+  <div className="grid grid-cols-5 gap-4">
+    <Stat title="Rows" value={profile.rows} />
+    <Stat title="Columns" value={profile.columns} />
+    <Stat title="Missing %" value={profile.missing_percentage} />
+    <Stat title="Duplicates %" value={profile.duplicate_percentage} />
+    <Stat title="Score" value={profile.quality_score} />
   </div>
 );
 
-const Section = ({ title, children }) => (
-  <div className="bg-gray-900 p-6 rounded">
-    <h3 className="text-lg font-semibold mb-4">{title}</h3>
-    {children}
+const Stat = ({ title, value }) => (
+  <div className="bg-black/40 p-4 rounded text-center">
+    <div className="text-sm">{title}</div>
+    <div className="text-2xl font-bold">{value}</div>
   </div>
 );
+
+const Checkbox = ({ label, value, setValue }) => (
+  <label className="flex items-center space-x-2">
+    <input type="checkbox" checked={value} onChange={(e) => setValue(e.target.checked)} />
+    <span>{label}</span>
+  </label>
+);
+
+const ScoreCard = ({ label, value }) => (
+  <div className="bg-black/40 p-4 rounded text-center">
+    <div className="text-sm">{label}</div>
+    <div className="text-2xl font-bold">{value}</div>
+  </div>
+);
+
+const ImportanceTable = ({ data }) => (
+  <table className="w-full mt-6 text-sm border border-white/10">
+    <thead>
+      <tr>
+        <th className="border px-2 py-1">Column</th>
+        <th className="border px-2 py-1">Importance</th>
+      </tr>
+    </thead>
+    <tbody>
+      {data.map((row) => (
+        <tr key={row.name}>
+          <td className="border px-2 py-1">{row.name}</td>
+          <td className="border px-2 py-1">{row.value}</td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+);
+
+const AutoMLBadge = ({ score }) => {
+  if (score < 70)
+    return <div className="bg-red-600 px-4 py-2 rounded w-fit">Not Ready</div>;
+  if (score < 85)
+    return <div className="bg-yellow-500 px-4 py-2 rounded w-fit">Needs Work</div>;
+  return <div className="bg-green-600 px-4 py-2 rounded w-fit">ML Ready</div>;
+};
 
 export default DashboardPage;
