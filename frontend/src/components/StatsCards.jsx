@@ -1,57 +1,43 @@
-export default function StatsCards({
-  rows,
-  columns,
-  duplicates,
-  emptyRows
-}) {
-  if (
-    rows === undefined ||
-    columns === undefined ||
-    duplicates === undefined ||
-    emptyRows === undefined
-  ) {
-    return null;
-  }
+import { motion } from "framer-motion";
+
+export default function StatsCards({ data }) {
+
+  if (!data?.quality_metrics) return null;
+
+  const { missing_percentage, duplicate_count } = data.quality_metrics;
 
   return (
-    <div className="grid md:grid-cols-4 gap-6">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
 
-      <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-        <h3 className="text-white/60 text-sm mb-2">
-          Total Rows
-        </h3>
-        <p className="text-2xl font-semibold text-cyan-400">
-          {rows.toLocaleString()}
+      <motion.div
+        whileHover={{ scale: 1.05 }}
+        className="bg-gray-800 p-6 rounded-xl shadow-xl text-center"
+      >
+        <h3 className="text-gray-400">Missing %</h3>
+        <p className="text-3xl font-bold text-red-400">
+          {missing_percentage}%
         </p>
-      </div>
+      </motion.div>
 
-      <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-        <h3 className="text-white/60 text-sm mb-2">
-          Total Columns
-        </h3>
-        <p className="text-2xl font-semibold text-purple-400">
-          {columns}
+      <motion.div
+        whileHover={{ scale: 1.05 }}
+        className="bg-gray-800 p-6 rounded-xl shadow-xl text-center"
+      >
+        <h3 className="text-gray-400">Duplicates</h3>
+        <p className="text-3xl font-bold text-yellow-400">
+          {duplicate_count}
         </p>
-      </div>
+      </motion.div>
 
-      <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-        <h3 className="text-white/60 text-sm mb-2">
-          Duplicate Rows
-        </h3>
-        <p className="text-2xl font-semibold text-red-400">
-          {duplicates.toLocaleString()}
+      <motion.div
+        whileHover={{ scale: 1.05 }}
+        className="bg-gray-800 p-6 rounded-xl shadow-xl text-center"
+      >
+        <h3 className="text-gray-400">Readiness</h3>
+        <p className="text-2xl font-bold text-green-400">
+          {data.readiness_status}
         </p>
-      </div>
-
-      {/* ✅ New Empty Rows Card */}
-      <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-        <h3 className="text-white/60 text-sm mb-2">
-          Empty Rows
-        </h3>
-        <p className="text-2xl font-semibold text-yellow-400">
-          {emptyRows.toLocaleString()}
-        </p>
-      </div>
+      </motion.div>
 
     </div>
   );

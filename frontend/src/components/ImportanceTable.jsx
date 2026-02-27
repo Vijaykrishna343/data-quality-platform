@@ -1,35 +1,42 @@
+import { motion } from "framer-motion";
+
 export default function ImportanceTable({ data }) {
   if (!data) return null;
 
-  const formattedData = Array.isArray(data)
-    ? data
-    : Object.entries(data).map(([column, score]) => ({
-        column,
-        score,
-      }));
+  const rows = Object.entries(data)
+    .map(([key, value]) => ({
+      name: key,
+      value: Number(value),
+    }))
+    .sort((a, b) => b.value - a.value);
 
   return (
-    <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-8">
-      <h2 className="text-xl font-semibold mb-6">
-        Column Importance Table
-      </h2>
-
-      <table className="w-full text-left">
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="overflow-x-auto mt-6"
+    >
+      <table className="min-w-full text-sm">
         <thead>
-          <tr className="text-gray-400">
-            <th className="pb-2">Column</th>
-            <th className="pb-2">Score</th>
+          <tr className="border-b border-gray-300 dark:border-gray-700">
+            <th className="p-3 text-left">Feature</th>
+            <th className="p-3 text-left">Importance</th>
           </tr>
         </thead>
         <tbody>
-          {formattedData.map((col, i) => (
-            <tr key={i} className="border-t border-white/10">
-              <td className="py-2">{col.column}</td>
-              <td className="py-2">{col.score}</td>
+          {rows.map((row, index) => (
+            <tr
+              key={index}
+              className="hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition"
+            >
+              <td className="p-3">{row.name}</td>
+              <td className="p-3 font-semibold text-indigo-600 dark:text-indigo-400">
+                {row.value}
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
-    </div>
+    </motion.div>
   );
 }
