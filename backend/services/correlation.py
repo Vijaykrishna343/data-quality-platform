@@ -1,33 +1,46 @@
 import pandas as pd
-import os
+import numpy as np
 
+
+# =====================================================
+# CORRELATION MATRIX
+# =====================================================
 
 def calculate_correlation_matrix(df: pd.DataFrame):
-    """
-    Returns full correlation matrix (numeric only)
-    """
 
     numeric_df = df.select_dtypes(include=["number"])
 
-    if numeric_df.empty:
+    # Need at least 2 numeric columns
+    if numeric_df.shape[1] < 2:
         return {}
 
-    corr_matrix = numeric_df.corr().fillna(0).round(3)
+    corr_matrix = numeric_df.corr()
+
+    # Replace NaN / inf safely
+    corr_matrix = corr_matrix.replace([np.inf, -np.inf], 0)
+    corr_matrix = corr_matrix.fillna(0).round(3)
 
     return corr_matrix.to_dict()
 
 
-def generate_heatmap_data(df: pd.DataFrame):
-    """
-    Returns visualization-ready heatmap structure
-    """
+# =====================================================
+# HEATMAP DATA (UI Friendly Format)
+# =====================================================
+
+def generate_heatmap_data(df: pd.DataFrame, max_features: int = 25):
 
     numeric_df = df.select_dtypes(include=["number"])
 
-    if numeric_df.empty:
+    if numeric_df.shape[1] < 2:
         return []
 
-    corr_matrix = numeric_df.corr().fillna(0)
+    # Limit features to prevent huge payload
+    numeric_df = numeric_df.iloc[:, :max_features]
+
+    corr_matrix = numeric_df.corr()
+
+    corr_matrix = corr_matrix.replace([np.inf, -np.inf], 0)
+    corr_matrix = corr_matrix.fillna(0)
 
     heatmap_data = []
 
@@ -42,31 +55,39 @@ def generate_heatmap_data(df: pd.DataFrame):
     return heatmap_data
 
 
-def detect_strong_correlations(df: pd.DataFrame, threshold: float = 0.8):
-    """
-    Detects strong feature relationships
-    """
+# =====================================================
+# STRONG CORRELATION DETECTION
+# =====================================================
+
+def detect_strong_correlations(
+    df: pd.DataFrame,
+    threshold: float = 0.8,
+    max_pairs: int = 20
+):
 
     numeric_df = df.select_dtypes(include=["number"])
 
-    if numeric_df.empty:
+    if numeric_df.shape[1] < 2:
         return []
 
-    corr_matrix = numeric_df.corr().fillna(0)
+    corr_matrix = numeric_df.corr()
+
+    corr_matrix = corr_matrix.replace([np.inf, -np.inf], 0)
+    corr_matrix = corr_matrix.fillna(0)
 
     strong_pairs = []
 
-    for i in range(len(corr_matrix.columns)):
-        for j in range(i + 1, len(corr_matrix.columns)):
+    columns = corr_matrix.columns
 
-            col1 = corr_matrix.columns[i]
-            col2 = corr_matrix.columns[j]
+    for i in range(len(columns)):
+        for j in range(i + 1, len(columns)):
+
             value = corr_matrix.iloc[i, j]
 
             if abs(value) >= threshold:
                 strong_pairs.append({
-                    "feature_1": col1,
-                    "feature_2": col2,
+                    "feature_1": columns[i],
+                    "feature_2": columns[j],
                     "correlation": round(float(value), 3)
                 })
 
@@ -77,4 +98,5 @@ def detect_strong_correlations(df: pd.DataFrame, threshold: float = 0.8):
         reverse=True
     )
 
-    return strong_pairs
+    # Limit payload
+    return strong_pairs[:max_pairs]

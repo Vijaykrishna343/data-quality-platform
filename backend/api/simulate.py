@@ -22,29 +22,25 @@ def simulate(dataset_id: str, payload: dict):
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Dataset not found")
 
-    df = pd.read_csv(file_path)
-    original_rows = len(df)
-
-    # ================= DROP COLUMNS =================
-    drop_cols = payload.get("drop_columns", [])
-    if drop_cols:
-        df = df.drop(columns=drop_cols, errors="ignore")
+    # ================= LOAD ORIGINAL =================
+    df_original = pd.read_csv(file_path)
+    original_rows = len(df_original)
 
     # ================= BEFORE METRICS =================
-    total_cells = len(df) * len(df.columns)
+    total_cells = len(df_original) * len(df_original.columns)
 
     missing_pct = (
-        (df.isnull().sum().sum() / total_cells) * 100
+        (df_original.isnull().sum().sum() / total_cells) * 100
         if total_cells > 0 else 0
     )
 
     duplicate_pct = (
-        (df.duplicated().sum() / len(df)) * 100
-        if len(df) > 0 else 0
+        (df_original.duplicated().sum() / len(df_original)) * 100
+        if len(df_original) > 0 else 0
     )
 
     outlier_pct = OutlierEngine.detect_percentage(
-        df,
+        df_original,
         payload.get("outlier_method", "iqr")
     )
 
@@ -54,11 +50,26 @@ def simulate(dataset_id: str, payload: dict):
         outlier_pct
     )
 
-    # ================= APPLY CLEANING =================
-    df_clean = df.copy()
+    # ================= START CLEANING =================
+    df_clean = df_original.copy()
+
+    drop_cols = payload.get("drop_columns", [])
+    if drop_cols:
+        df_clean = df_clean.drop(columns=drop_cols, errors="ignore")
 
     if payload.get("handle_missing"):
-        df_clean = df_clean.fillna(df_clean.median(numeric_only=True))
+        numeric_cols = df_clean.select_dtypes(include=[np.number]).columns
+        df_clean[numeric_cols] = df_clean[numeric_cols].fillna(
+            df_clean[numeric_cols].median()
+        )
+
+        categorical_cols = df_clean.select_dtypes(exclude=[np.number]).columns
+        for col in categorical_cols:
+            if df_clean[col].isnull().any():
+                mode_series = df_clean[col].mode()
+                df_clean[col] = df_clean[col].fillna(
+                    mode_series.iloc[0] if not mode_series.empty else "Unknown"
+                )
 
     if payload.get("remove_duplicates"):
         df_clean = df_clean.drop_duplicates()
@@ -93,9 +104,18 @@ def simulate(dataset_id: str, payload: dict):
         outlier_pct_after
     )
 
-    # ================= SAVE CLEANED FILE (SAFE) =================
-    cleaned_path = os.path.join(CLEAN_DIR, f"{dataset_id}.csv")
+    # ================= ML READINESS AFTER =================
+    if score_after < 60:
+        readiness = {"label": "Not Ready", "color": "red"}
+    elif score_after < 75:
+        readiness = {"label": "Needs Work", "color": "orange"}
+    elif score_after < 90:
+        readiness = {"label": "Good", "color": "blue"}
+    else:
+        readiness = {"label": "ML Ready", "color": "green"}
 
+    # ================= SAVE CLEANED FILE =================
+    cleaned_path = os.path.join(CLEAN_DIR, f"{dataset_id}.csv")
     df_clean = df_clean.replace([np.inf, -np.inf], np.nan)
     df_clean.to_csv(cleaned_path, index=False)
 
@@ -105,4 +125,6 @@ def simulate(dataset_id: str, payload: dict):
         "improvement": round(score_after - score_before, 2),
         "rows_before": original_rows,
         "rows_after": len(df_clean),
+        "rows_removed": original_rows - len(df_clean),
+        "ml_readiness_after": readiness
     }
