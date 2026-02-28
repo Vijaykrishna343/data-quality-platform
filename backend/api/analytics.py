@@ -14,11 +14,21 @@ from backend.services.correlation import (
 )
 from backend.services.recommendation_service import RecommendationService
 
-
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
 
-# ✅ FIXED DIRECTORY (must match upload.py)
 UPLOAD_DIR = "backend/storage/uploads"
+
+
+# ✅ Helper function to clean NaN safely from any object
+def clean_nan(obj):
+    if isinstance(obj, dict):
+        return {k: clean_nan(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [clean_nan(i) for i in obj]
+    elif isinstance(obj, float) and (np.isnan(obj) or np.isinf(obj)):
+        return None
+    else:
+        return obj
 
 
 @router.get("/{dataset_id}")
@@ -90,18 +100,22 @@ def get_full_analytics(dataset_id: str):
         readiness = "ML Ready"
         badge_color = "green"
 
-    # ================= SAFE JSON CLEANING =================
+    # ================= PREVIEW CLEANING =================
     df_clean = df.replace([np.inf, -np.inf], np.nan)
-    preview_rows = df_clean.head(20).where(pd.notnull(df_clean), None).to_dict(orient="records")
+    preview_rows = (
+        df_clean.head(20)
+        .where(pd.notnull(df_clean), None)
+        .to_dict(orient="records")
+    )
 
-    # ================= RETURN RESPONSE =================
-    return {
+    # ================= FINAL RESPONSE =================
+    response = {
         "profile": {
             "rows": total_rows,
             "columns": total_cols,
             "missing_percentage": round(missing_pct, 2),
             "duplicate_percentage": round(duplicate_pct, 2),
-            "quality_score": quality_score,
+            "quality_score": round(quality_score, 2),
             "completeness": round(completeness, 2),
         },
         "importance": importance,
@@ -122,3 +136,6 @@ def get_full_analytics(dataset_id: str):
         },
         "preview": preview_rows
     }
+
+    # ✅ Clean any remaining NaN / inf before returning
+    return clean_nan(response)
