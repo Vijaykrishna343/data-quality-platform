@@ -1,4 +1,6 @@
 import pandas as pd
+import numpy as np
+
 
 class ImportanceEngine:
 
@@ -6,30 +8,76 @@ class ImportanceEngine:
     def calculate(df: pd.DataFrame):
 
         total_rows = len(df)
+
+        if total_rows == 0:
+            return {}
+
         importance_scores = {}
 
         for col in df.columns:
 
-            missing_ratio = df[col].isnull().mean()
+            series = df[col]
 
-            unique_ratio = (
-                df[col].nunique() / total_rows
-                if total_rows > 0 else 0
-            )
+            # =====================
+            # Missing Ratio
+            # =====================
+            missing_ratio = series.isnull().mean()
 
-            # Detect identifier column
+            # =====================
+            # Unique Ratio
+            # =====================
+            unique_count = series.nunique(dropna=True)
+            unique_ratio = unique_count / total_rows if total_rows > 0 else 0
+
+            # =====================
+            # Detect Identifier
+            # =====================
             is_identifier = unique_ratio > 0.95
 
-            # Weighted formula
+            # =====================
+            # Detect Constant Column
+            # =====================
+            is_constant = unique_count <= 1
+
+            # =====================
+            # Data Type Weight
+            # =====================
+            if pd.api.types.is_numeric_dtype(series):
+                dtype_weight = 15
+            else:
+                dtype_weight = 10
+
+            # =====================
+            # Variance Bonus (numeric only)
+            # =====================
+            variance_bonus = 0
+            if pd.api.types.is_numeric_dtype(series) and not is_constant:
+                variance = series.var()
+                if variance > 0:
+                    variance_bonus = 10
+
+            # =====================
+            # Base Score Formula
+            # =====================
             score = (
-                (1 - missing_ratio) * 40 +
-                unique_ratio * 40 +
-                (0 if is_identifier else 20)
+                (1 - missing_ratio) * 40 +   # completeness weight
+                unique_ratio * 25 +          # uniqueness weight
+                dtype_weight +               # type usefulness
+                variance_bonus               # numeric usefulness
             )
 
-            # Cap score
-            if score > 95:
-                score = 95
+            # Penalize identifier columns
+            if is_identifier:
+                score -= 20
+
+            # Penalize constant columns
+            if is_constant:
+                score -= 30
+
+            # =====================
+            # Clamp score
+            # =====================
+            score = max(0, min(score, 95))
 
             importance_scores[col] = round(score, 2)
 

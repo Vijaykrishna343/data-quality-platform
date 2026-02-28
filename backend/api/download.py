@@ -11,17 +11,17 @@ CLEAN_DIR = "backend/storage/cleaned"
 
 os.makedirs(CLEAN_DIR, exist_ok=True)
 
+# =====================================================
+# DATASET PREVIEW (JSON SAFE + FAST + PAGINATION SAFE)
+# =====================================================
 
-# =====================================================
-# DATASET PREVIEW (JSON SAFE + PAGINATION SAFE)
-# =====================================================
 @router.get("/preview/{dataset_id}")
 def preview_dataset(dataset_id: str, page: int = 1, page_size: int = 20):
 
     cleaned_path = os.path.join(CLEAN_DIR, f"{dataset_id}.csv")
     original_path = os.path.join(UPLOAD_DIR, f"{dataset_id}.csv")
 
-    # Priority: cleaned file first
+    # Priority: cleaned first
     if os.path.exists(cleaned_path):
         file_path = cleaned_path
     elif os.path.exists(original_path):
@@ -36,7 +36,6 @@ def preview_dataset(dataset_id: str, page: int = 1, page_size: int = 20):
 
     total_rows = len(df)
 
-    # If empty dataset
     if total_rows == 0:
         return {
             "columns": [],
@@ -44,9 +43,7 @@ def preview_dataset(dataset_id: str, page: int = 1, page_size: int = 20):
             "total_rows": 0
         }
 
-    # ---------------------------
-    # Safe Pagination
-    # ---------------------------
+    # Safe pagination
     page = max(page, 1)
     page_size = max(page_size, 1)
 
@@ -59,25 +56,16 @@ def preview_dataset(dataset_id: str, page: int = 1, page_size: int = 20):
 
     page_df = df.iloc[start:end]
 
-    # ---------------------------
-    # CRITICAL: JSON SAFE CLEANING
-    # ---------------------------
-    page_df = page_df.replace([np.inf, -np.inf], None)
-    page_df = page_df.astype(object)
+    # =====================================================
+    # ENTERPRISE SAFE JSON CLEANING
+    # =====================================================
 
-    records = []
-    for _, row in page_df.iterrows():
-        clean_row = {}
-        for col, val in row.items():
-            if pd.isna(val):
-                clean_row[col] = None
-            else:
-                clean_row[col] = val
-        records.append(clean_row)
+    page_df = page_df.replace([np.inf, -np.inf], np.nan)
+    page_df = page_df.where(pd.notnull(page_df), None)
 
     return {
         "columns": list(page_df.columns),
-        "rows": records,
+        "rows": page_df.to_dict(orient="records"),
         "total_rows": total_rows
     }
 
@@ -85,6 +73,7 @@ def preview_dataset(dataset_id: str, page: int = 1, page_size: int = 20):
 # =====================================================
 # DOWNLOAD CLEANED DATASET
 # =====================================================
+
 @router.get("/{dataset_id}")
 def download_cleaned(dataset_id: str):
 

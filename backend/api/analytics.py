@@ -9,7 +9,6 @@ from backend.engines.importance_engine import ImportanceEngine
 from backend.engines.completeness_engine import CompletenessEngine
 from backend.services.correlation import (
     calculate_correlation_matrix,
-    generate_heatmap_data,
     detect_strong_correlations
 )
 from backend.services.recommendation_service import RecommendationService
@@ -34,33 +33,19 @@ def clean_nan(obj):
 @router.get("/{dataset_id}")
 def get_full_analytics(dataset_id: str):
 
-    # ================= FILE PATH =================
     file_path = os.path.join(UPLOAD_DIR, f"{dataset_id}.csv")
 
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Dataset not found")
 
-    # ================= LOAD DATA =================
-    try:
-        df = pd.read_csv(file_path)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to read dataset: {str(e)}")
+    df = pd.read_csv(file_path)
 
     total_rows = len(df)
     total_cols = len(df.columns)
     total_cells = total_rows * total_cols
 
-    # ================= BASIC METRICS =================
-    missing_pct = (
-        (df.isnull().sum().sum() / total_cells) * 100
-        if total_cells > 0 else 0
-    )
-
-    duplicate_pct = (
-        (df.duplicated().sum() / total_rows) * 100
-        if total_rows > 0 else 0
-    )
-
+    missing_pct = (df.isnull().sum().sum() / total_cells) * 100 if total_cells else 0
+    duplicate_pct = (df.duplicated().sum() / total_rows) * 100 if total_rows else 0
     outlier_pct = OutlierEngine.detect_percentage(df, "iqr")
 
     quality_score = ScoringEngine.calculate_score(
@@ -71,19 +56,24 @@ def get_full_analytics(dataset_id: str):
 
     completeness = CompletenessEngine.calculate(df)
 
-    # ================= IMPORTANCE =================
+    # Advanced Data Type Classification
+    numeric_columns = df.select_dtypes(include=["number"]).columns.tolist()
+    categorical_columns = df.select_dtypes(include=["object"]).columns.tolist()
+    boolean_columns = df.select_dtypes(include=["bool"]).columns.tolist()
+    datetime_columns = df.select_dtypes(include=["datetime"]).columns.tolist()
+
     importance = ImportanceEngine.calculate(df)
 
-    # ================= OUTLIERS =================
     column_outliers = OutlierEngine.detect_column_outliers(df, "iqr")
-    outlier_chart = OutlierEngine.generate_outlier_chart_data(df, "iqr")
 
-    # ================= CORRELATION =================
     correlation_matrix = calculate_correlation_matrix(df)
-    heatmap_data = generate_heatmap_data(df)
     strong_pairs = detect_strong_correlations(df)
 
-    # ================= RECOMMENDATIONS =================
+    correlation_matrix = {
+        k: {kk: float(vv) for kk, vv in v.items()}
+        for k, v in correlation_matrix.items()
+    }
+
     recommendations = RecommendationService.generate(df)
 
     # ================= ML READINESS =================
@@ -100,16 +90,12 @@ def get_full_analytics(dataset_id: str):
         readiness = "ML Ready"
         badge_color = "green"
 
-    # ================= PREVIEW CLEANING =================
+    # ================= SAFE JSON CLEANING =================
     df_clean = df.replace([np.inf, -np.inf], np.nan)
-    preview_rows = (
-        df_clean.head(20)
-        .where(pd.notnull(df_clean), None)
-        .to_dict(orient="records")
-    )
+    preview_rows = df_clean.head(20).where(pd.notnull(df_clean), None).to_dict(orient="records")
 
-    # ================= FINAL RESPONSE =================
-    response = {
+    # ================= RETURN RESPONSE =================
+    return {
         "profile": {
             "rows": total_rows,
             "columns": total_cols,
@@ -118,23 +104,22 @@ def get_full_analytics(dataset_id: str):
             "quality_score": round(quality_score, 2),
             "completeness": round(completeness, 2),
         },
+        "data_types": {
+            "numeric": numeric_columns,
+            "categorical": categorical_columns,
+            "boolean": boolean_columns,
+            "datetime": datetime_columns,
+        },
         "importance": importance,
         "outliers": {
             "overall_percentage": outlier_pct,
             "column_outliers": column_outliers,
-            "chart_data": outlier_chart,
         },
         "correlation": {
             "matrix": correlation_matrix,
-            "heatmap": heatmap_data,
             "strong_pairs": strong_pairs,
         },
-        "recommendations": recommendations,
-        "ml_readiness": {
-            "label": readiness,
-            "color": badge_color,
-        },
-        "preview": preview_rows
+        "ai_review": recommendations
     }
 
     # ✅ Clean any remaining NaN / inf before returning
