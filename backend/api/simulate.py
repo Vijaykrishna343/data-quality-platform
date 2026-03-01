@@ -13,7 +13,6 @@ CLEAN_DIR = "backend/storage/cleaned"
 
 os.makedirs(CLEAN_DIR, exist_ok=True)
 
-
 @router.post("/{dataset_id}")
 def simulate(dataset_id: str, payload: dict):
 
@@ -44,10 +43,14 @@ def simulate(dataset_id: str, payload: dict):
         payload.get("outlier_method", "iqr")
     )
 
+    # ✅ NEW — Temporary noisy percentage (until you implement real logic)
+    noisy_pct = 0
+
     score_before = ScoringEngine.calculate_score(
         missing_pct,
         duplicate_pct,
-        outlier_pct
+        outlier_pct,
+        noisy_pct
     )
 
     # ================= START CLEANING =================
@@ -98,10 +101,14 @@ def simulate(dataset_id: str, payload: dict):
         payload.get("outlier_method", "iqr")
     )
 
+    # ✅ NEW — Temporary noisy percentage after cleaning
+    noisy_pct_after = 0
+
     score_after = ScoringEngine.calculate_score(
         missing_pct_after,
         duplicate_pct_after,
-        outlier_pct_after
+        outlier_pct_after,
+        noisy_pct_after
     )
 
     # ================= ML READINESS AFTER =================

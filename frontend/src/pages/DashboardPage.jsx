@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, animate } from "framer-motion";
 import { useParams } from "react-router-dom";
 import {
   getAnalytics,
@@ -34,6 +34,8 @@ export default function DashboardPage() {
   const [removeDuplicates, setRemoveDuplicates] = useState(true);
   const [outlierMethod, setOutlierMethod] = useState("iqr");
   const [dropColumns, setDropColumns] = useState([]);
+  const [animatedAfterScore, setAnimatedAfterScore] = useState(0);
+  const [animatedImprovement, setAnimatedImprovement] = useState(0);
 
   useEffect(() => {
     init();
@@ -69,13 +71,24 @@ export default function DashboardPage() {
         outlier_method: outlierMethod,
         drop_columns: dropColumns,
       });
+
       setCleanResult(res.data);
+
+      animate(0, res.data.score_after, {
+        duration: 1.2,
+        onUpdate: (latest) => setAnimatedAfterScore(latest.toFixed(2)),
+      });
+
+      animate(0, res.data.improvement, {
+        duration: 1.2,
+        onUpdate: (latest) => setAnimatedImprovement(latest.toFixed(2)),
+      });
+
       await loadPreview(1);
     } finally {
       setCleaningLoading(false);
     }
   };
-
   const handleDownload = async () => {
     const response = await downloadCleanedDataset(datasetId);
     const url = window.URL.createObjectURL(new Blob([response.data]));
@@ -106,16 +119,39 @@ export default function DashboardPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0f172a] via-[#1e1b4b] to-[#0f172a] text-white p-10 space-y-14">
+    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-[#0f172a] via-[#1e1b4b] to-[#0f172a] text-white p-10 space-y-14">
+
+  {/* Animated Background Glow */}
+  <div className="absolute inset-0 -z-10">
+    <motion.div
+      animate={{ 
+        x: [0, 100, -100, 0], 
+        y: [0, -80, 80, 0] 
+      }}
+      transition={{ 
+        duration: 20, 
+        repeat: Infinity, 
+        ease: "linear" 
+      }}
+      className="absolute w-[600px] h-[600px] bg-purple-600/20 rounded-full blur-3xl"
+    />
+  </div>
 
       {/* OVERVIEW */}
       <Section title="Dataset Overview">
         <StatsGrid
-          profile={analytics.profile}
-          outlierPercentage={analytics.outliers?.overall_percentage}
-          noisyPercentage={analytics.outliers?.noisy_percentage}
-        />
-        <MLBadge readiness={analytics.ml_readiness} />
+  profile={analytics.profile}
+  updatedScore={cleanResult ? cleanResult.score_after : null}
+  outlierPercentage={analytics.outliers?.overall_percentage}
+  noisyPercentage={analytics.outliers?.noisy_percentage}
+/>
+        <MLBadge
+  readiness={
+    cleanResult
+      ? cleanResult.ml_readiness_after
+      : analytics.ml_readiness
+  }
+/>
       </Section>
 
       {/* DATA TYPES */}
@@ -127,24 +163,31 @@ export default function DashboardPage() {
       </Section>
 
       {/* IMPORTANCE */}
-      <Section title="Column Importance">
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={importanceData}>
-            <XAxis dataKey="name" angle={-30} textAnchor="end" height={80} />
-            <YAxis />
-            <Tooltip />
-            <Bar dataKey="value" radius={[10, 10, 0, 0]}>
-              {importanceData.map((entry, index) => {
-                let color = "#6366f1";
-                if (index === 0) color = "#10b981";
-                if (index === 1) color = "#22c55e";
-                if (index === 2) color = "#84cc16";
-                return <Cell key={index} fill={color} />;
-              })}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </Section>
+<Section title="Column Importance">
+  <motion.div
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.6 }}
+  >
+    <ResponsiveContainer width="100%" height={300}>
+      <BarChart data={importanceData}>
+        <XAxis dataKey="name" angle={-30} textAnchor="end" height={80} />
+        <YAxis />
+        <Tooltip />
+        <Bar
+          dataKey="value"
+          radius={[10, 10, 0, 0]}
+          animationDuration={1200}
+        >
+          {importanceData.map((entry, index) => (
+            <Cell key={index} fill="#6366f1" />
+          ))}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  </motion.div>
+</Section>
+      
 
       {/* CORRELATION */}
       <Section title="Correlation Analysis">
@@ -160,45 +203,82 @@ export default function DashboardPage() {
       {/* CLEANING CONTROLS */}
       <Section title="Smart Cleaning Controls">
         <div className="grid md:grid-cols-3 gap-8">
-          <div className="space-y-4">
-            <Toggle label="Handle Missing" value={handleMissing} setValue={setHandleMissing} />
-            <Toggle label="Remove Duplicates" value={removeDuplicates} setValue={setRemoveDuplicates} />
 
-            <select
-              value={outlierMethod}
-              onChange={(e) => setOutlierMethod(e.target.value)}
-              className="w-full bg-black/40 border border-white/20 rounded-lg px-3 py-2"
-            >
-              <option value="none">No Outlier Removal</option>
-              <option value="iqr">IQR</option>
-              <option value="isolation">Isolation Forest</option>
-            </select>
+          <div className="space-y-4">
+            <Toggle
+              label="Handle Missing"
+              value={handleMissing}
+              setValue={setHandleMissing}
+            />
+            <Toggle
+              label="Remove Duplicates"
+              value={removeDuplicates}
+              setValue={setRemoveDuplicates}
+            />
+
+            <div className="bg-white/5 border border-white/10 rounded-xl p-2 flex gap-2">
+  {[
+    { label: "None", value: "none" },
+    { label: "IQR", value: "iqr" },
+    { label: "Isolation", value: "isolation" },
+  ].map((option) => {
+    const active = outlierMethod === option.value;
+
+    return (
+      <motion.div
+        key={option.value}
+        whileTap={{ scale: 0.95 }}
+        onClick={() => setOutlierMethod(option.value)}
+        className={`flex-1 text-center py-2 rounded-lg cursor-pointer text-sm font-medium transition-all duration-300
+          ${
+            active
+              ? "bg-indigo-500/30 text-white shadow-lg shadow-indigo-500/30"
+              : "text-gray-400 hover:bg-indigo-500/20"
+          }`}
+      >
+        {option.label}
+      </motion.div>
+    );
+  })}
+</div>
           </div>
 
           <div className="md:col-span-2">
             <h3 className="text-gray-400 mb-4">Drop Columns</h3>
-            <div className="grid grid-cols-2 gap-3 max-h-72 overflow-y-auto">
-              {allColumns.map((col) => (
-                <label key={col} className="flex items-center space-x-2 bg-black/30 px-3 py-2 rounded-lg">
-                  <input
-                    type="checkbox"
-                    checked={dropColumns.includes(col)}
-                    onChange={() => toggleColumn(col)}
-                  />
-                  <span>{col}</span>
-                </label>
-              ))}
+
+            <div className="flex flex-wrap gap-3 max-h-72 overflow-y-auto">
+              {allColumns.map((col) => {
+                const selected = dropColumns.includes(col);
+
+                return (
+                  <motion.div
+                    key={col}
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => toggleColumn(col)}
+                    className={`cursor-pointer px-4 py-2 rounded-full border text-sm font-medium transition-all duration-300
+                      ${
+                        selected
+                          ? "bg-red-500/20 border-red-400 text-red-300 shadow-lg shadow-red-500/20"
+                          : "bg-white/5 border-white/20 hover:bg-indigo-500/20 hover:border-indigo-400"
+                      }`}
+                  >
+                    {col}
+                  </motion.div>
+                );
+              })}
             </div>
           </div>
         </div>
 
-        <button
-          disabled={cleaningLoading}
-          onClick={runCleaning}
-          className="mt-6 px-6 py-3 bg-indigo-600 rounded-xl hover:scale-105 transition"
-        >
-          {cleaningLoading ? "Cleaning..." : "Run Smart Cleaning"}
-        </button>
+       <motion.button
+  whileHover={{ scale: 1.05 }}
+  whileTap={{ scale: 0.95 }}
+  disabled={cleaningLoading}
+  onClick={runCleaning}
+  className="mt-6 px-6 py-3 rounded-xl font-semibold bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-600 shadow-lg shadow-indigo-500/30 transition-all duration-300"
+>
+  {cleaningLoading ? "Cleaning..." : "Run Cleaning"}
+</motion.button>
       </Section>
 
       {/* CLEANING RESULTS */}
@@ -208,12 +288,27 @@ export default function DashboardPage() {
             <ComparisonChart
               before={cleanResult.score_before}
               after={cleanResult.score_after}
-              rowsRemoved={cleanResult.rows_removed}
+              rowsRemoved={
+                cleanResult.rows_before - cleanResult.rows_after
+              }
             />
-            <AIReview review={cleanResult.ai_review_after} />
+            <motion.div
+             initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="mt-6 space-y-2"
+>
+          <div className="text-xl font-bold text-green-400">
+            Final Score: {animatedAfterScore}
+   </div>
+
+    <div className="text-green-400 text-lg font-semibold">
+    🚀 +{animatedImprovement}% Improvement
+    </div>
+</motion.div>
+
             <button
               onClick={handleDownload}
-              className="mt-6 bg-green-600 px-5 py-2 rounded-lg"
+              className="mt-6 bg-green-600 px-5 py-2 rounded-lg hover:scale-105 transition"
             >
               Download Cleaned CSV
             </button>
@@ -233,16 +328,15 @@ export default function DashboardPage() {
     </div>
   );
 }
-
-/* COMPONENTS */
+/* ===================== COMPONENTS ===================== */
 
 function Section({ title, children }) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 25 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-8"
-    >
+      transition={{ duration: 0.5 }}
+       className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-8 hover:bg-white/10 transition duration-300"    >
       <h2 className="text-2xl mb-6 font-semibold">{title}</h2>
       {children}
     </motion.div>
@@ -251,27 +345,129 @@ function Section({ title, children }) {
 
 function MLBadge({ readiness }) {
   if (!readiness) return null;
-  const colorMap = {
-    red: "text-red-400 bg-red-500/20",
-    orange: "text-orange-400 bg-orange-500/20",
-    blue: "text-blue-400 bg-blue-500/20",
-    green: "text-green-400 bg-green-500/20",
+
+  const colors = {
+    red: "bg-red-500/20 text-red-400",
+    orange: "bg-orange-500/20 text-orange-400",
+    blue: "bg-blue-500/20 text-blue-400",
+    green: "bg-green-500/20 text-green-400 shadow-lg shadow-green-500/30",
   };
+
   return (
-    <div className={`inline-block mt-6 px-4 py-2 rounded-full ${colorMap[readiness.color]}`}>
-      {readiness.label}
+    <motion.div
+      initial={{ scale: 0.7, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      transition={{ duration: 0.4 }}
+      className={`inline-block mt-6 px-5 py-2 rounded-full font-semibold ${colors[readiness.color]}`}
+    >
+      {readiness.label === "ML Ready" ? "🚀 ML Ready" : readiness.label}
+    </motion.div>
+  );
+}
+
+function StatsGrid({ profile, updatedScore, outlierPercentage, noisyPercentage }) {
+  if (!profile) return null;
+
+  const stats = [
+    { label: "Rows", value: profile.rows },
+    { label: "Columns", value: profile.columns },
+    { label: "Missing Row Count", value: profile.missing_count },
+    { label: "Duplicate Row Count", value: profile.duplicate_count },
+    {
+      label: "Outlier % (Cell-wise)",
+      value:
+        typeof outlierPercentage === "number"
+          ? `${outlierPercentage.toFixed(2)}%`
+          : "0%",
+    },
+    {
+      label: "Noisy Data %",
+      value:
+        typeof noisyPercentage === "number"
+          ? `${noisyPercentage.toFixed(2)}%`
+          : "0%",
+    },
+    {
+  label: "Quality Score",
+  value: updatedScore !== null ? updatedScore : profile.quality_score,
+},
+  ];
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-7 gap-6">
+      {stats.map((item) => {
+        const isQuality = item.label === "Quality Score";
+
+        return (
+          <motion.div
+  whileHover={{ scale: 1.07 }}
+  transition={{ type: "spring", stiffness: 200 }}
+  key={item.label}
+  className={`
+              rounded-2xl p-6 text-center transition duration-300
+              ${
+                isQuality
+                  ? "bg-gradient-to-br from-green-500/20 to-indigo-500/20 border border-green-400/40 shadow-lg shadow-green-500/20"
+                  : "bg-gradient-to-br from-white/10 to-white/5 border border-white/20"
+              }
+            `}
+          >
+            <div className="text-sm text-gray-400">{item.label}</div>
+            <div
+              className={`text-2xl font-bold mt-2 ${
+                isQuality ? "text-green-400" : ""
+              }`}
+            >
+              {item.value}
+            </div>
+          </motion.div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ComparisonChart({ before, after, rowsRemoved }) {
+  return (
+    <div className="space-y-8">
+
+      <div>
+        <h3 className="text-gray-400 mb-3">Quality Score Improvement</h3>
+
+        <div className="bg-gray-800 rounded-full h-6 overflow-hidden">
+          <motion.div
+            initial={{ width: `${before}%` }}
+            animate={{ width: `${after}%` }}
+            transition={{ duration: 1.2 }}
+            className="h-6 bg-gradient-to-r from-indigo-500 via-purple-500 to-green-500"
+          />
+        </div>
+
+        <div className="flex justify-between mt-2 text-sm text-gray-400">
+          <span>Before: {before}</span>
+          <span>After: {after}</span>
+        </div>
+      </div>
+
+      <div className="text-gray-400">
+        Rows Removed: <span className="text-red-400">{rowsRemoved}</span>
+      </div>
     </div>
   );
 }
 
 function DataTypeBlock({ title, items }) {
   if (!items || items.length === 0) return null;
+
   return (
     <div className="mb-6">
       <h3 className="text-indigo-400 mb-3">{title}</h3>
       <div className="flex flex-wrap gap-2">
         {items.map((col) => (
-          <span key={col} className="bg-indigo-500/20 px-3 py-1 rounded-full text-sm">
+          <span
+            key={col}
+            className="bg-indigo-500/20 px-3 py-1 rounded-full text-sm"
+          >
             {col}
           </span>
         ))}
@@ -281,44 +477,39 @@ function DataTypeBlock({ title, items }) {
 }
 
 function AIReview({ review }) {
-  if (!review) return null;
-  return (
-    <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-xl p-6 space-y-2">
-      {review.map((line, index) => (
-        <div key={index}>• {line}</div>
-      ))}
-    </div>
-  );
-}
+  const [open, setOpen] = useState(true);
 
-function ComparisonChart({ before, after, rowsRemoved }) {
-  const data = [
-    { name: "Before", value: before },
-    { name: "After", value: after },
-  ];
+  if (!review) return null;
+
   return (
-    <>
-      <ResponsiveContainer width="100%" height={250}>
-        <BarChart data={data}>
-          <XAxis dataKey="name" />
-          <YAxis domain={[0, 100]} />
-          <Tooltip />
-          <Bar dataKey="value" radius={[10,10,0,0]}>
-            <Cell fill="#6366f1" />
-            <Cell fill="#10b981" />
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
-      <div className="mt-4 text-green-400">
-        Rows Removed: {rowsRemoved}
+    <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-xl overflow-hidden">
+      <div
+        onClick={() => setOpen(!open)}
+        className="cursor-pointer px-6 py-4 flex justify-between items-center hover:bg-indigo-500/20 transition"
+      >
+        <span className="font-semibold">AI Insights</span>
+        <span>{open ? "−" : "+"}</span>
       </div>
-    </>
+
+      <motion.div
+        initial={false}
+        animate={{ height: open ? "auto" : 0, opacity: open ? 1 : 0 }}
+        className="px-6 overflow-hidden"
+      >
+        <div className="py-4 space-y-2">
+          {review.map((line, index) => (
+            <div key={index}>• {line}</div>
+          ))}
+        </div>
+      </motion.div>
+    </div>
   );
 }
 
 function CorrelationHeatmap({ matrix }) {
   if (!matrix) return null;
   const columns = Object.keys(matrix);
+
   return (
     <div className="overflow-x-auto">
       <table className="text-xs border border-white/10">
@@ -341,7 +532,11 @@ function CorrelationHeatmap({ matrix }) {
                     ? `rgba(16,185,129,${Math.abs(val)})`
                     : `rgba(239,68,68,${Math.abs(val)})`;
                 return (
-                  <td key={col} style={{ backgroundColor: bg }} className="p-3 text-center">
+                  <td
+                    key={col}
+                    style={{ backgroundColor: bg }}
+                    className="p-3 text-center"
+                  >
                     {val.toFixed(2)}
                   </td>
                 );
@@ -356,6 +551,7 @@ function CorrelationHeatmap({ matrix }) {
 
 function StrongCorrelationPairs({ pairs }) {
   if (!pairs || pairs.length === 0) return null;
+
   return (
     <div className="mt-4">
       <h3 className="text-red-400 mb-3">Strong Correlations</h3>
@@ -370,16 +566,31 @@ function StrongCorrelationPairs({ pairs }) {
 
 function Toggle({ label, value, setValue }) {
   return (
-    <label className="flex items-center justify-between bg-black/30 px-4 py-3 rounded-lg">
-      <span>{label}</span>
-      <input type="checkbox" checked={value} onChange={(e) => setValue(e.target.checked)} />
-    </label>
+    <div className="flex items-center justify-between bg-white/5 border border-white/10 px-5 py-4 rounded-xl hover:bg-white/10 transition">
+      <span className="text-sm font-medium">{label}</span>
+
+      <div
+        onClick={() => setValue(!value)}
+        className={`w-14 h-7 flex items-center rounded-full p-1 cursor-pointer transition duration-300
+          ${value ? "bg-green-500/40" : "bg-gray-600/40"}`}
+      >
+        <motion.div
+          layout
+          transition={{ type: "spring", stiffness: 500, damping: 30 }}
+          className="w-5 h-5 bg-white rounded-full shadow-md"
+          style={{
+            marginLeft: value ? "auto" : "0",
+          }}
+        />
+      </div>
+    </div>
   );
 }
 
 function DataTable({ rows, columns, page, totalRows, loadPreview }) {
-  const totalPages = Math.ceil(totalRows / PAGE_SIZE);
+const totalPages = Math.ceil(totalRows / PAGE_SIZE);
   if (!rows.length) return <div>No data available</div>;
+
   return (
     <>
       <div className="overflow-x-auto">
@@ -387,7 +598,9 @@ function DataTable({ rows, columns, page, totalRows, loadPreview }) {
           <thead className="bg-indigo-500/20">
             <tr>
               {columns.map((col) => (
-                <th key={col} className="px-3 py-2 text-left">{col}</th>
+                <th key={col} className="px-3 py-2 text-left">
+                  {col}
+                </th>
               ))}
             </tr>
           </thead>
@@ -395,7 +608,9 @@ function DataTable({ rows, columns, page, totalRows, loadPreview }) {
             {rows.map((row, i) => (
               <tr key={i} className="odd:bg-white/5 hover:bg-indigo-500/20">
                 {columns.map((col) => (
-                  <td key={col} className="px-3 py-2">{row[col]}</td>
+                  <td key={col} className="px-3 py-2">
+                    {row[col]}
+                  </td>
                 ))}
               </tr>
             ))}
@@ -423,45 +638,5 @@ function DataTable({ rows, columns, page, totalRows, loadPreview }) {
         </button>
       </div>
     </>
-  );
-}
-
-function StatsGrid({ profile, outlierPercentage, noisyPercentage }) {
-  if (!profile) return null;
-
-  const stats = [
-  { label: "Rows", value: profile.rows },
-  { label: "Columns", value: profile.columns },
-  { label: "Missing Row Count", value: profile.missing_count },
-  { label: "Duplicate Row Count", value: profile.duplicate_count },
-  {
-    label: "Outlier % (Cell-wise)",
-    value:
-      typeof outlierPercentage === "number"
-        ? `${outlierPercentage.toFixed(2)}%`
-        : "0%",
-  },
-  {
-    label: "Noisy Data %",
-    value:
-      typeof noisyPercentage === "number"
-        ? `${noisyPercentage.toFixed(2)}%`
-        : "0%",
-  },
-  { label: "Quality Score", value: profile.quality_score },
-  ];
-
-  return (
-    <div className="grid grid-cols-2 md:grid-cols-7 gap-6">
-      {stats.map((item) => (
-        <div
-          key={item.label}
-          className="bg-gradient-to-br from-white/10 to-white/5 border border-white/20 shadow-lg shadow-indigo-500/10 rounded-2xl p-6 text-center hover:scale-105 transition duration-300"
-        >
-          <div className="text-sm text-gray-400">{item.label}</div>
-          <div className="text-2xl font-bold mt-2">{item.value}</div>
-        </div>
-      ))}
-    </div>
   );
 }
