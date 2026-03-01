@@ -428,8 +428,8 @@ function StatsGrid({ profile }) {
   const stats = [
     { label: "Rows", value: profile.rows },
     { label: "Columns", value: profile.columns },
-    { label: "Missing %", value: profile.missing_percentage },
-    { label: "Duplicate %", value: profile.duplicate_percentage },
+    { label: "Missing Count", value: profile.missing_count },
+    { label: "Duplicate Count", value: profile.duplicate_count },
     { label: "Quality Score", value: profile.quality_score },
   ];
 
