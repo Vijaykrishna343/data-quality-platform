@@ -17,7 +17,6 @@ router = APIRouter(prefix="/analytics", tags=["Analytics"])
 
 UPLOAD_DIR = "backend/storage/uploads"
 
-
 # ✅ Helper function to clean NaN safely from any object
 def clean_nan(obj):
     if isinstance(obj, dict):
@@ -44,13 +43,19 @@ def get_full_analytics(dataset_id: str):
     total_cols = len(df.columns)
     total_cells = total_rows * total_cols
 
-    missing_pct = (df.isnull().sum().sum() / total_cells) * 100 if total_cells else 0
-    duplicate_pct = (df.duplicated().sum() / total_rows) * 100 if total_rows else 0
+    # ================= CHANGED TO COUNTS =================
+    missing_count = int(df.isnull().any(axis=1).sum())
+    duplicate_count = int(df.duplicated(keep="first").sum())
+
+    # ================= KEEP PERCENTAGE FOR SCORING =================
+    missing_percentage = (missing_count / total_cells) * 100 if total_cells else 0
+    duplicate_percentage = (duplicate_count / total_rows) * 100 if total_rows else 0
+
     outlier_pct = OutlierEngine.detect_percentage(df, "iqr")
 
     quality_score = ScoringEngine.calculate_score(
-        missing_pct,
-        duplicate_pct,
+        missing_percentage,
+        duplicate_percentage,
         outlier_pct
     )
 
@@ -92,17 +97,23 @@ def get_full_analytics(dataset_id: str):
 
     # ================= SAFE JSON CLEANING =================
     df_clean = df.replace([np.inf, -np.inf], np.nan)
-    preview_rows = df_clean.head(20).where(pd.notnull(df_clean), None).to_dict(orient="records")
+    preview_rows = df_clean.head(20).where(
+        pd.notnull(df_clean), None
+    ).to_dict(orient="records")
 
     # ================= RETURN RESPONSE =================
-    return {
+    response = {
         "profile": {
             "rows": total_rows,
             "columns": total_cols,
-            "missing_percentage": round(missing_pct, 2),
-            "duplicate_percentage": round(duplicate_pct, 2),
+            "missing_count": missing_count,
+            "duplicate_count": duplicate_count,
             "quality_score": round(quality_score, 2),
             "completeness": round(completeness, 2),
+        },
+        "ml_readiness": {
+            "label": readiness,
+            "color": badge_color
         },
         "data_types": {
             "numeric": numeric_columns,
@@ -122,5 +133,4 @@ def get_full_analytics(dataset_id: str):
         "ai_review": recommendations
     }
 
-    # ✅ Clean any remaining NaN / inf before returning
     return clean_nan(response)
