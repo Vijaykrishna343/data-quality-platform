@@ -29,6 +29,37 @@ def clean_nan(obj):
         return obj
 
 
+# ✅ NEW: Precise Cell-wise Outlier Percentage (IQR)
+def calculate_outlier_percentage(df):
+    numeric_df = df.select_dtypes(include=["number"])
+
+    if numeric_df.empty:
+        return 0.0
+
+    total_cells = numeric_df.size
+    outlier_cells = 0
+
+    for col in numeric_df.columns:
+        Q1 = numeric_df[col].quantile(0.25)
+        Q3 = numeric_df[col].quantile(0.75)
+        IQR = Q3 - Q1
+
+        if IQR == 0:
+            continue
+
+        lower_bound = Q1 - 1.5 * IQR
+        upper_bound = Q3 + 1.5 * IQR
+
+        outliers = numeric_df[
+            (numeric_df[col] < lower_bound) |
+            (numeric_df[col] > upper_bound)
+        ][col]
+
+        outlier_cells += outliers.count()
+
+    return round((outlier_cells / total_cells) * 100, 2)
+
+
 @router.get("/{dataset_id}")
 def get_full_analytics(dataset_id: str):
 
@@ -44,19 +75,35 @@ def get_full_analytics(dataset_id: str):
     total_cells = total_rows * total_cols
 
     # ================= CHANGED TO COUNTS =================
-    missing_count = int(df.isnull().any(axis=1).sum())
+    missing_count = int(df.isnull().all(axis=1).sum())
     duplicate_count = int(df.duplicated(keep="first").sum())
 
     # ================= KEEP PERCENTAGE FOR SCORING =================
     missing_percentage = (missing_count / total_cells) * 100 if total_cells else 0
     duplicate_percentage = (duplicate_count / total_rows) * 100 if total_rows else 0
 
-    outlier_pct = OutlierEngine.detect_percentage(df, "iqr")
+    # ✅ UPDATED: Using precise cell-wise IQR calculation
+    outlier_pct = calculate_outlier_percentage(df)
+
+    # ================= NOISY DATA (Cell-wise using Z-score) =================
+    numeric_df = df.select_dtypes(include=["number"])
+
+    if not numeric_df.empty:
+        z_scores = np.abs((numeric_df - numeric_df.mean()) / numeric_df.std())
+        noisy_cells = (z_scores > 3).sum().sum()
+        total_numeric_cells = numeric_df.shape[0] * numeric_df.shape[1]
+        noisy_percentage = (
+            (noisy_cells / total_numeric_cells) * 100
+            if total_numeric_cells > 0 else 0
+        )
+    else:
+        noisy_percentage = 0
 
     quality_score = ScoringEngine.calculate_score(
         missing_percentage,
         duplicate_percentage,
-        outlier_pct
+        outlier_pct,
+        noisy_percentage
     )
 
     completeness = CompletenessEngine.calculate(df)
@@ -124,6 +171,7 @@ def get_full_analytics(dataset_id: str):
         "importance": importance,
         "outliers": {
             "overall_percentage": outlier_pct,
+            "noisy_percentage": round(noisy_percentage, 2),
             "column_outliers": column_outliers,
         },
         "correlation": {

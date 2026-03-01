@@ -1,23 +1,26 @@
+import math
+
+
 class ScoringEngine:
 
     @staticmethod
-    def calculate_score(missing_pct, duplicate_pct, outlier_pct):
+    def calculate_score(missing_pct, duplicate_pct, outlier_pct, noisy_pct):
         """
-        Calculates weighted quality score.
+        Advanced non-linear quality score calculation.
         """
 
-        weights = {
-            "missing": 0.4,
-            "duplicate": 0.3,
-            "outlier": 0.3,
-        }
-
-        score = (
-            100
-            - (missing_pct * weights["missing"])
-            - (duplicate_pct * weights["duplicate"])
-            - (outlier_pct * weights["outlier"])
+        # Step 1: Strong weighted impact
+        weighted_impact = (
+            missing_pct * 2.0 +      # Missing hurts most
+            duplicate_pct * 1.5 +    # Duplicates moderate
+            outlier_pct * 1.3 +      # Outliers moderate
+            noisy_pct * 1.7          # Noise strong penalty
         )
+
+        # Step 2: Non-linear scaling (makes bad data drop faster)
+        severity = math.log1p(weighted_impact) * 15
+
+        score = 100 - severity
 
         score = max(min(score, 100), 0)
 
@@ -57,13 +60,14 @@ class ScoringEngine:
         }
 
     @staticmethod
-    def score_breakdown(missing_pct, duplicate_pct, outlier_pct):
+    def score_breakdown(missing_pct, duplicate_pct, outlier_pct, noisy_pct):
         """
         Returns detailed breakdown for frontend visualization.
         """
 
         return {
-            "missing_impact": round(missing_pct * 0.4, 2),
-            "duplicate_impact": round(duplicate_pct * 0.3, 2),
-            "outlier_impact": round(outlier_pct * 0.3, 2),
+            "missing_impact": round(missing_pct * 2.0, 2),
+            "duplicate_impact": round(duplicate_pct * 1.5, 2),
+            "outlier_impact": round(outlier_pct * 1.3, 2),
+            "noisy_impact": round(noisy_pct * 1.7, 2),
         }

@@ -110,7 +110,11 @@ export default function DashboardPage() {
 
       {/* OVERVIEW */}
       <Section title="Dataset Overview">
-        <StatsGrid profile={analytics.profile} />
+        <StatsGrid
+          profile={analytics.profile}
+          outlierPercentage={analytics.outliers?.overall_percentage}
+          noisyPercentage={analytics.outliers?.noisy_percentage}
+        />
         <MLBadge readiness={analytics.ml_readiness} />
       </Section>
 
@@ -422,19 +426,33 @@ function DataTable({ rows, columns, page, totalRows, loadPreview }) {
   );
 }
 
-function StatsGrid({ profile }) {
+function StatsGrid({ profile, outlierPercentage, noisyPercentage }) {
   if (!profile) return null;
 
   const stats = [
-    { label: "Rows", value: profile.rows },
-    { label: "Columns", value: profile.columns },
-    { label: "Missing Count", value: profile.missing_count },
-    { label: "Duplicate Count", value: profile.duplicate_count },
-    { label: "Quality Score", value: profile.quality_score },
+  { label: "Rows", value: profile.rows },
+  { label: "Columns", value: profile.columns },
+  { label: "Missing Row Count", value: profile.missing_count },
+  { label: "Duplicate Row Count", value: profile.duplicate_count },
+  {
+    label: "Outlier % (Cell-wise)",
+    value:
+      typeof outlierPercentage === "number"
+        ? `${outlierPercentage.toFixed(2)}%`
+        : "0%",
+  },
+  {
+    label: "Noisy Data %",
+    value:
+      typeof noisyPercentage === "number"
+        ? `${noisyPercentage.toFixed(2)}%`
+        : "0%",
+  },
+  { label: "Quality Score", value: profile.quality_score },
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
+    <div className="grid grid-cols-2 md:grid-cols-7 gap-6">
       {stats.map((item) => (
         <div
           key={item.label}
