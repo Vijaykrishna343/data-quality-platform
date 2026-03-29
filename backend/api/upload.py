@@ -1,7 +1,9 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from sqlalchemy.orm import Session
+from backend.database import get_db
+from backend.models import Dataset
 import os
 import uuid
-import pandas as pd
 
 from backend.core.file_manager import read_csv
 
@@ -12,24 +14,28 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
 @router.post("/")
-async def upload_file(file: UploadFile = File(...)):
-
+async def upload_file(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    # Validate file type
     if not file.filename.lower().endswith(".csv"):
         raise HTTPException(status_code=400, detail="Only CSV files allowed")
 
-    dataset_id = str(uuid.uuid4())
-    file_path = os.path.join(UPLOAD_DIR, f"{dataset_id}.csv")
+    # ✅ Use UUID for file storage (NOT DB ID)
+    file_id = str(uuid.uuid4())
+    file_path = os.path.join(UPLOAD_DIR, f"{file_id}.csv")
 
     try:
-        # Use chunked streaming instead of loading entire file into memory
+        # Save file
         with open(file_path, "wb") as f:
             while True:
-                chunk = await file.read(1024 * 1024)  # 1MB chunks
+                chunk = await file.read(1024 * 1024)
                 if not chunk:
                     break
                 f.write(chunk)
 
-        # 🔥 Fast CSV validation (only read first 5 rows) using robust read_csv
+        # Validate CSV
         try:
             df = read_csv(file_path, sep=None, engine="python", nrows=5)
         except Exception as e:
@@ -37,6 +43,16 @@ async def upload_file(file: UploadFile = File(...)):
 
         if df.empty:
             raise ValueError("CSV file is empty")
+
+        # ✅ Save dataset in DB
+        new_dataset = Dataset(
+            name=file.filename,
+            file_path=file_path
+        )
+
+        db.add(new_dataset)
+        db.commit()
+        db.refresh(new_dataset)
 
     except Exception as e:
         if os.path.exists(file_path):
@@ -48,7 +64,7 @@ async def upload_file(file: UploadFile = File(...)):
         )
 
     return {
-        "dataset_id": dataset_id,
+        "dataset_id": new_dataset.id,  # DB ID (important)
         "filename": file.filename,
         "message": "File uploaded successfully"
     }

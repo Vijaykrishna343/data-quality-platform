@@ -1,16 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-# ================= ROUTER IMPORTS =================
-
-from backend.api.upload import router as upload_router
-from backend.api.profile import router as profile_router
-from backend.api.classification import router as classification_router
-from backend.api.simulate import router as simulate_router
-from backend.api.recommend import router as recommend_router
-from backend.api.download import router as download_router
-from backend.api.analytics import router as analytics_router   
-
+# ✅ Database imports
+from backend.database import engine
+from backend.models import Base
 
 # ================= APP INITIALIZATION =================
 
@@ -20,6 +13,22 @@ app = FastAPI(
     version="2.0.0"
 )
 
+# ================= DATABASE INIT =================
+
+@app.on_event("startup")
+def create_tables():
+    Base.metadata.create_all(bind=engine)
+
+# ================= ROUTER IMPORTS =================
+
+from backend.api.upload import router as upload_router
+from backend.api.profile import router as profile_router
+from backend.api.classification import router as classification_router
+from backend.api.simulate import router as simulate_router
+from backend.api.recommend import router as recommend_router
+from backend.api.download import router as download_router
+from backend.api.analytics import router as analytics_router  
+from backend.api.history import router as history_router
 
 # ================= CORS CONFIGURATION =================
 
@@ -34,10 +43,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 # ================= ROUTERS =================
-# IMPORTANT:
-# Prefixes are defined ONLY here (NOT inside router files)
 
 app.include_router(upload_router, prefix="/upload", tags=["Upload"])
 app.include_router(profile_router, prefix="/profile", tags=["Profile"])
@@ -45,10 +51,10 @@ app.include_router(classification_router, prefix="/classify", tags=["Classificat
 app.include_router(simulate_router, prefix="/simulate", tags=["Simulation"])
 app.include_router(recommend_router, prefix="/recommend", tags=["Recommendation"])
 app.include_router(download_router, prefix="/download", tags=["Download"])
+app.include_router(history_router)
 
-# 🚀 Unified Analytics Endpoint
-app.include_router(analytics_router)   # already has prefix="/analytics" inside file
-
+# Analytics already has prefix inside file
+app.include_router(analytics_router)
 
 # ================= HEALTH CHECK =================
 

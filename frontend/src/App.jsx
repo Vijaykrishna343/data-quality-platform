@@ -5,6 +5,7 @@ import LandingPage from "./pages/LandingPage";
 import UploadPage from "./pages/UploadPage";
 import DashboardPage from "./pages/DashboardPage";
 import Navbar from "./components/Navbar";
+import History from "./pages/History";
 
 function AnimatedRoutes() {
   const location = useLocation();
@@ -22,6 +23,7 @@ function AnimatedRoutes() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/upload" element={<UploadPage />} />
           <Route path="/dashboard/:datasetId" element={<DashboardPage />} />
+          <Route path="/history" element={<History />} /> {/* ✅ FIXED */}
         </Routes>
       </motion.div>
     </AnimatePresence>
