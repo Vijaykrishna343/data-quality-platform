@@ -1,9 +1,20 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+import logging
 
 # ✅ Database imports
 from backend.database import engine
 from backend.models import Base
+from backend.config import CORS_ORIGINS
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 # ================= APP INITIALIZATION =================
 
@@ -34,14 +45,39 @@ from backend.api.history import router as history_router
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ================= GLOBAL EXCEPTION HANDLERS =================
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc):
+    """Handle validation errors"""
+    logger.warning(f"Validation error: {exc}")
+    return JSONResponse(
+        status_code=422,
+        content={
+            "status_code": 422,
+            "detail": "Validation error",
+            "errors": exc.errors()
+        }
+    )
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request, exc):
+    """Handle unexpected errors"""
+    logger.error(f"Unexpected error: {str(exc)}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "status_code": 500,
+            "detail": "Internal server error",
+            "error_type": type(exc).__name__
+        }
+    )
 
 # ================= ROUTERS =================
 

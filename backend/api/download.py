@@ -1,35 +1,40 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import FileResponse
 import os
 import pandas as pd
 import numpy as np
 
 from backend.core.file_manager import read_csv
+from backend.config import CLEANED_DIR
+from backend.database import get_db
+from backend.models import Dataset
+from backend.schemas.response_models import PreviewResponse
+from sqlalchemy.orm import Session
 
 router = APIRouter()
-
-UPLOAD_DIR = "backend/storage/uploads"
-CLEAN_DIR = "backend/storage/cleaned"
-
-os.makedirs(CLEAN_DIR, exist_ok=True)
 
 # =====================================================
 # DATASET PREVIEW (JSON SAFE + FAST + PAGINATION SAFE)
 # =====================================================
 
-@router.get("/preview/{dataset_id}")
-def preview_dataset(dataset_id: str, page: int = 1, page_size: int = 20):
-
-    cleaned_path = os.path.join(CLEAN_DIR, f"{dataset_id}.csv")
-    original_path = os.path.join(UPLOAD_DIR, f"{dataset_id}.csv")
+@router.get("/preview/{dataset_id}", response_model=PreviewResponse)
+def preview_dataset(dataset_id: int, page: int = 1, page_size: int = 20, db: Session = Depends(get_db)):
+    # Get dataset from database
+    dataset = db.query(Dataset).filter(Dataset.id == dataset_id).first()
+    
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    
+    original_file_path = dataset.file_path
+    cleaned_path = os.path.join(CLEANED_DIR, f"{dataset.id}.csv")
 
     # Priority: cleaned first
     if os.path.exists(cleaned_path):
         file_path = cleaned_path
-    elif os.path.exists(original_path):
-        file_path = original_path
+    elif os.path.exists(original_file_path):
+        file_path = original_file_path
     else:
-        raise HTTPException(status_code=404, detail="Dataset not found")
+        raise HTTPException(status_code=404, detail="Dataset file not found")
 
     try:
         df = read_csv(file_path)
@@ -77,9 +82,14 @@ def preview_dataset(dataset_id: str, page: int = 1, page_size: int = 20):
 # =====================================================
 
 @router.get("/{dataset_id}")
-def download_cleaned(dataset_id: str):
+def download_cleaned(dataset_id: int, db: Session = Depends(get_db)):
+    
+    dataset = db.query(Dataset).filter(Dataset.id == dataset_id).first()
+    
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
 
-    cleaned_path = os.path.join(CLEAN_DIR, f"{dataset_id}.csv")
+    cleaned_path = os.path.join(CLEANED_DIR, f"{dataset.id}.csv")
 
     if not os.path.exists(cleaned_path):
         raise HTTPException(status_code=404, detail="Cleaned dataset not found")

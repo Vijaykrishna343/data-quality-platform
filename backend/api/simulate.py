@@ -6,19 +6,23 @@ import numpy as np
 from sqlalchemy.orm import Session
 from backend.database import get_db
 from backend.models import Dataset
+from backend.config import CLEANED_DIR
 
 from backend.core.file_manager import read_csv
 from backend.engines.scoring_engine import ScoringEngine
 from backend.engines.outlier_engine import OutlierEngine
+from backend.schemas.request_models import SimulationRequest
+from backend.schemas.response_models import SimulationResponse
 
 router = APIRouter()
 
-CLEAN_DIR = "backend/storage/cleaned"
-os.makedirs(CLEAN_DIR, exist_ok=True)
 
-
-@router.post("/{dataset_id}")
-def simulate(dataset_id: int, payload: dict, db: Session = Depends(get_db)):
+@router.post("/{dataset_id}", response_model=SimulationResponse)
+def simulate(
+    dataset_id: int,
+    payload: SimulationRequest,
+    db: Session = Depends(get_db)
+):
 
     # ✅ GET DATASET FROM DB
     dataset = db.query(Dataset).filter(Dataset.id == dataset_id).first()
@@ -40,16 +44,21 @@ def simulate(dataset_id: int, payload: dict, db: Session = Depends(get_db)):
         df_original, "iqr"
     )
 
+    payload_data = payload.model_dump()
+    outlier_method = payload_data.get("outlier_method") or "none"
+    if outlier_method == "isolation":
+        outlier_method = "isolation_forest"
+
     # ================= START CLEANING =================
     df_clean = df_original.copy()
 
     # 1. Drop columns
-    drop_cols = payload.get("drop_columns", [])
+    drop_cols = payload_data.get("drop_columns", [])
     if drop_cols:
         df_clean = df_clean.drop(columns=drop_cols, errors="ignore")
 
     # 2. Missing values
-    missing_method = payload.get("missing_method", "none")
+    missing_method = payload_data.get("missing_method", "none")
     if missing_method != "none":
         numeric_cols = df_clean.select_dtypes(include=[np.number]).columns
         categorical_cols = df_clean.select_dtypes(exclude=[np.number]).columns
@@ -73,8 +82,7 @@ def simulate(dataset_id: int, payload: dict, db: Session = Depends(get_db)):
                         df_clean[col] = df_clean[col].fillna(mode_val.iloc[0])
 
     # 3. Outliers
-    outlier_method = payload.get("outlier_method", "none")
-    outlier_action = payload.get("outlier_action", "fix")
+    outlier_action = payload_data.get("outlier_action", "fix")
 
     if outlier_method != "none":
         if outlier_action == "remove":
@@ -83,8 +91,8 @@ def simulate(dataset_id: int, payload: dict, db: Session = Depends(get_db)):
             df_clean = OutlierEngine.fix_outliers(df_clean, outlier_method)
 
     # 4. Noise
-    noisy_method = payload.get("noisy_method", "none")
-    noisy_action = payload.get("noisy_action", "fix")
+    noisy_method = payload_data.get("noisy_method", "none")
+    noisy_action = payload_data.get("noisy_action", "fix")
 
     if noisy_method != "none":
         if noisy_action == "remove":
@@ -94,26 +102,26 @@ def simulate(dataset_id: int, payload: dict, db: Session = Depends(get_db)):
 
     # ================= AFTER METRICS =================
     score_after, _, _, _, _ = ScoringEngine.calculate_metrics_and_score(
-        df_clean, payload.get("outlier_method", "iqr")
+        df_clean, outlier_method if outlier_method != "none" else "iqr"
     )
 
     readiness = ScoringEngine.get_ml_readiness(score_after)
 
     # ================= SAVE CLEANED FILE =================
-    cleaned_path = os.path.join(CLEAN_DIR, f"{dataset_id}.csv")
+    cleaned_path = os.path.join(CLEANED_DIR, f"{dataset.id}.csv")
     df_clean = df_clean.replace([np.inf, -np.inf], np.nan)
     df_clean.to_csv(cleaned_path, index=False)
 
     # ================= RESPONSE =================
-    return {
-        "score_before": round(score_before, 2),
-        "score_after": round(score_after, 2),
-        "improvement": round(score_after - score_before, 2),
-        "rows_before": original_rows,
-        "rows_after": len(df_clean),
-        "rows_removed": original_rows - len(df_clean),
-        "ml_readiness_after": {
+    return SimulationResponse(
+        score_before=round(score_before, 2),
+        score_after=round(score_after, 2),
+        improvement=round(score_after - score_before, 2),
+        rows_before=original_rows,
+        rows_after=len(df_clean),
+        rows_removed=original_rows - len(df_clean),
+        ml_readiness_after={
             "label": readiness["status"],
             "color": readiness["color"]
         }
-    }
+    )

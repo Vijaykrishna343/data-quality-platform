@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { motion, animate } from "framer-motion";
 import { useParams } from "react-router-dom";
 import {
@@ -52,33 +52,13 @@ export default function DashboardPage() {
   const [animatedAfterScore, setAnimatedAfterScore] = useState(0);
   const [animatedImprovement, setAnimatedImprovement] = useState(0);
 
-  useEffect(() => {
-    init();
-  }, []);
-
-  // 🚀 Dynamic Cleaning Simulation (Debounced)
-  useEffect(() => {
-    const delayDebounceFn = setTimeout(() => {
-      if (analytics && hasExecuted) {
-        runCleaning();
-      }
-    }, 1000);
-
-    return () => clearTimeout(delayDebounceFn);
-  }, [missingMethod, outlierMethod, noisyMethod, dropColumns, outlierAction, noisyAction]);
-
-  const init = async () => {
-    const res = await getAnalytics(datasetId);
-    setAnalytics(res.data);
-  };
-
-  const loadPreview = async (p = 1) => {
+  const loadPreview = useCallback(async (p = 1) => {
     const res = await fetchDatasetPage(datasetId, p, PAGE_SIZE);
     setRows(res.data.rows || []);
     setColumns(res.data.columns || []);
     setTotalRows(res.data.total_rows || 0);
     setPage(p);
-  };
+  }, [datasetId]);
 
   const toggleColumn = (col) => {
     if (dropColumns.includes(col)) {
@@ -88,7 +68,7 @@ export default function DashboardPage() {
     }
   };
 
-  const runCleaning = async () => {
+  const runCleaning = useCallback(async () => {
     setCleaningLoading(true);
     setHasExecuted(true);
     try {
@@ -119,16 +99,50 @@ export default function DashboardPage() {
     } finally {
       setCleaningLoading(false);
     }
-  };
+  }, [
+    datasetId,
+    dropColumns,
+    loadPreview,
+    missingMethod,
+    noisyAction,
+    noisyMethod,
+    outlierAction,
+    outlierMethod,
+  ]);
+
+  useEffect(() => {
+    const init = async () => {
+      const res = await getAnalytics(datasetId);
+      setAnalytics(res.data);
+      await loadPreview(1);
+    };
+
+    init();
+  }, [datasetId, loadPreview]);
+
+  // 🚀 Dynamic Cleaning Simulation (Debounced)
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      if (analytics && hasExecuted) {
+        runCleaning();
+      }
+    }, 1000);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [
+    analytics,
+    hasExecuted,
+    missingMethod,
+    outlierMethod,
+    noisyMethod,
+    dropColumns,
+    outlierAction,
+    noisyAction,
+    runCleaning,
+  ]);
+
   const handleDownload = async () => {
-    const response = await downloadCleanedDataset(datasetId);
-    const url = window.URL.createObjectURL(new Blob([response.data]));
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download", "cleaned_dataset.csv");
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+    await downloadCleanedDataset(datasetId);
   };
 
   if (!analytics)
@@ -149,6 +163,8 @@ export default function DashboardPage() {
     ...(analytics.data_types?.boolean || []),
     ...(analytics.data_types?.datetime || []),
   ];
+  const pointsFixed = cleanResult?.points_fixed ?? 0;
+  const correctedWithoutDrops = pointsFixed > 0 && cleanResult?.rows_removed === 0;
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-[#0f172a] via-[#1e1b4b] to-[#0f172a] text-white p-10 space-y-14">
@@ -176,7 +192,6 @@ export default function DashboardPage() {
           profile={analytics.profile}
           outlierPercentage={analytics.outliers?.overall_percentage}
           noisyPercentage={analytics.outliers?.noisy_percentage}
-          breakdown={analytics.outliers?.breakdown}
         />
         <MLBadge
           readiness={
@@ -468,21 +483,21 @@ export default function DashboardPage() {
                 </div>
               </motion.div>
 
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                className={`${(cleanResult.points_fixed > 0 && cleanResult.rows_removed === 0) ? 'bg-blue-500/5 border-blue-500/20 shadow-blue-500/5' : 'bg-red-500/5 border-red-500/20 shadow-red-500/5'} rounded-2xl p-8 flex flex-col items-center justify-center text-center space-y-2 transition-colors duration-500`}
-              >
-                <div className={`p-3 ${(cleanResult.points_fixed > 0 && cleanResult.rows_removed === 0) ? 'bg-blue-500/20 text-blue-400' : 'bg-red-500/20 text-red-400'} rounded-full mb-2`}>
-                  {(cleanResult.points_fixed > 0 && cleanResult.rows_removed === 0) ? <CheckCircle className="w-6 h-6" /> : <AlertOctagon className="w-6 h-6" />}
-                </div>
-                <div className={`text-3xl font-bold ${(cleanResult.points_fixed > 0 && cleanResult.rows_removed === 0) ? 'text-blue-400' : 'text-red-400'}`}>
-                  {cleanResult.points_fixed > 0 && cleanResult.rows_removed === 0 ? cleanResult.points_fixed : cleanResult.rows_removed}
-                </div>
-                <div className="text-gray-400 text-sm font-medium uppercase tracking-widest">
-                  {cleanResult.points_fixed > 0 && cleanResult.rows_removed === 0 ? "Data Points Corrected" : "Redundant Rows Stripped"}
-                </div>
-              </motion.div>
+                <motion.div
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  className={`${correctedWithoutDrops ? 'bg-blue-500/5 border-blue-500/20 shadow-blue-500/5' : 'bg-red-500/5 border-red-500/20 shadow-red-500/5'} rounded-2xl p-8 flex flex-col items-center justify-center text-center space-y-2 transition-colors duration-500`}
+                >
+                  <div className={`p-3 ${correctedWithoutDrops ? 'bg-blue-500/20 text-blue-400' : 'bg-red-500/20 text-red-400'} rounded-full mb-2`}>
+                  {correctedWithoutDrops ? <CheckCircle className="w-6 h-6" /> : <AlertOctagon className="w-6 h-6" />}
+                  </div>
+                  <div className={`text-3xl font-bold ${correctedWithoutDrops ? 'text-blue-400' : 'text-red-400'}`}>
+                  {correctedWithoutDrops ? pointsFixed : cleanResult.rows_removed}
+                  </div>
+                  <div className="text-gray-400 text-sm font-medium uppercase tracking-widest">
+                  {correctedWithoutDrops ? "Data Points Corrected" : "Redundant Rows Stripped"}
+                  </div>
+                </motion.div>
             </div>
 
             {/* DOWNLOAD BUTTON */}
@@ -616,7 +631,7 @@ function ActionToggle({ active, onClick }) {
 
 
 
-function StatsGrid({ profile, outlierPercentage, noisyPercentage, breakdown }) {
+function StatsGrid({ profile, outlierPercentage, noisyPercentage }) {
   if (!profile) return null;
 
   const stats = [
