@@ -7,11 +7,22 @@ const API = axios.create({
   timeout: 30000, // 30s safety timeout
 });
 
-/* ================= GLOBAL ERROR HANDLER ================= */
+/* ================= GLOBAL ERROR HANDLER & RETRY ================= */
 
 API.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
+    const originalRequest = error.config;
+    
+    // Auto-retry specifically for simulation or ML queries on timeout or 500+ errors
+    if ((error.response?.status >= 500 || error.code === 'ECONNABORTED') && !originalRequest._retryCount) {
+      originalRequest._retryCount = 1;
+      console.warn("API Error detected. Retrying request immediately...");
+      // Wait 1 second before retrying
+      await new Promise(res => setTimeout(res, 1000));
+      return API(originalRequest);
+    }
+    
     console.error("API Error:", error.response?.data || error.message);
     return Promise.reject(error);
   }
@@ -66,6 +77,19 @@ export const downloadCleanedDataset = async (datasetId) => {
   link.remove();
 
   return response;
+};
+
+/* ================= MACHINE LEARNING ================= */
+
+export const trainModel = async (datasetId, targetColumn, taskType = "classification") => {
+  return await API.post(`/ml/train/${datasetId}`, {
+    target_column: targetColumn,
+    task_type: taskType
+  });
+};
+
+export const getPlotUrl = (plotType) => {
+  return `http://127.0.0.1:8000/ml/plot/${plotType}?t=${new Date().getTime()}`;
 };
 
 export default API;

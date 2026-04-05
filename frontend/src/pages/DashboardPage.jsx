@@ -6,6 +6,8 @@ import {
   simulateCleaning,
   fetchDatasetPage,
   downloadCleanedDataset,
+  trainModel,
+  getPlotUrl
 } from "../services/api";
 import {
   BarChart,
@@ -39,6 +41,7 @@ export default function DashboardPage() {
   const [page, setPage] = useState(1);
   const [totalRows, setTotalRows] = useState(0);
   const [cleaningLoading, setCleaningLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
 
   // Advanced Cleaning States
   const [missingMethod, setMissingMethod] = useState("smart");
@@ -112,9 +115,14 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const init = async () => {
-      const res = await getAnalytics(datasetId);
-      setAnalytics(res.data);
-      await loadPreview(1);
+      try {
+        const res = await getAnalytics(datasetId);
+        setAnalytics(res.data);
+        await loadPreview(1);
+      } catch (err) {
+        console.error("Failed to load analytics:", err);
+        setLoadError(err?.response?.data?.detail || "Failed to load dataset analytics. The file might have been removed.");
+      }
     };
 
     init();
@@ -144,6 +152,21 @@ export default function DashboardPage() {
   const handleDownload = async () => {
     await downloadCleanedDataset(datasetId);
   };
+
+  if (loadError)
+    return (
+      <div className="flex flex-col items-center justify-center h-screen bg-[#0f172a] text-white space-y-4">
+        <AlertTriangle className="w-12 h-12 text-red-500" />
+        <h2 className="text-2xl font-bold">Error Loading Analytics</h2>
+        <p className="text-gray-400 max-w-md text-center">{loadError}</p>
+        <button 
+          onClick={() => window.location.href = '/'}
+          className="px-6 py-2 mt-4 bg-indigo-600 hover:bg-indigo-700 font-semibold rounded-lg transition"
+        >
+          Go Back Home
+        </button>
+      </div>
+    );
 
   if (!analytics)
     return (
@@ -333,12 +356,13 @@ export default function DashboardPage() {
               </div>
               <h3 className="text-gray-200 font-bold uppercase tracking-widest text-[10px]">Handle Missing Values</h3>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
               {[
                 { label: "None", value: "none", icon: <AlertOctagon className="w-3 h-3" /> },
                 { label: "Mean", value: "mean", icon: <Info className="w-3 h-3" /> },
                 { label: "Median", value: "median", icon: <Info className="w-3 h-3" /> },
                 { label: "Mode", value: "mode", icon: <Info className="w-3 h-3" /> },
+                { label: "KNN", value: "knn", icon: <Sparkles className="w-3 h-3" /> },
                 { label: "Smart", value: "smart", icon: <Sparkles className="w-3 h-3" /> },
               ].map((m) => (
                 <MethodButton
@@ -364,11 +388,14 @@ export default function DashboardPage() {
                 </div>
                 <ActionToggle active={outlierAction} onClick={setOutlierAction} />
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
                 {[
                   { label: "None", value: "none" },
                   { label: "IQR", value: "iqr" },
                   { label: "Isolation", value: "isolation" },
+                  { label: "MAD", value: "mad" },
+                  { label: "LOF", value: "lof" },
+                  { label: "Hybrid", value: "hybrid" },
                 ].map((m) => (
                   <MethodButton
                     key={m.value}
@@ -396,7 +423,7 @@ export default function DashboardPage() {
                   </div>
                   <ActionToggle active={noisyAction} onClick={setNoisyAction} />
                 </div>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
                   {[
                     { label: "None", value: "none" },
                     { label: "Z-Score", value: "zscore" },
@@ -513,6 +540,8 @@ export default function DashboardPage() {
             </div>
 
           </Section>
+
+          <MLSection datasetId={datasetId} columns={allColumns} />
 
           {/* CLEANED DATA PREVIEW */}
           <Section title="Cleaned Dataset Preview">
@@ -1117,5 +1146,127 @@ function DataTable({ rows, columns, page, totalRows, loadPreview }) {
         </div>
       </div>
     </div>
+  );
+}
+
+
+function MLSection({ datasetId, columns }) {
+  const [targetColumn, setTargetColumn] = useState("");
+  const [taskType, setTaskType] = useState("classification");
+  const [loading, setLoading] = useState(false);
+  const [metrics, setMetrics] = useState(null);
+  const [error, setError] = useState(null);
+
+  const handleTrain = async () => {
+    if (!targetColumn) {
+      setError("Please select a target column.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await trainModel(datasetId, targetColumn, taskType);
+      setMetrics(res.data.metrics);
+    } catch (err) {
+      setError(err.response?.data?.detail || "Failed to train model.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Section title="Advanced Machine Learning">
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="flex-1 min-w-[200px]">
+            <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Target Column (Y)</label>
+            <select
+              value={targetColumn}
+              onChange={(e) => setTargetColumn(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white outline-none focus:border-indigo-500"
+            >
+              <option value="">-- Select Target --</option>
+              {columns && columns.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div className="flex-1 min-w-[200px]">
+            <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Task Type</label>
+            <select
+              value={taskType}
+              onChange={(e) => setTaskType(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white outline-none focus:border-indigo-500"
+            >
+              <option value="classification">Classification</option>
+              <option value="regression">Regression</option>
+            </select>
+          </div>
+          <button
+            onClick={handleTrain}
+            disabled={loading}
+            className="bg-indigo-600 hover:bg-indigo-700 px-8 py-3 rounded-xl font-bold uppercase tracking-widest transition-all disabled:opacity-50"
+          >
+            {loading ? "Training..." : "Train Model"}
+          </button>
+        </div>
+
+        {error && <div className="text-red-400 bg-red-900/20 p-4 rounded-lg">{error}</div>}
+
+        {metrics && (
+          <div className="mt-8 space-y-6">
+            <h3 className="text-xl font-semibold text-indigo-300">Training Results</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {metrics.accuracy !== undefined && (
+                <div className="bg-white/5 border border-white/10 p-4 rounded-xl">
+                  <div className="text-xs text-gray-400 uppercase">Accuracy</div>
+                  <div className="text-2xl font-bold">{(metrics.accuracy * 100).toFixed(2)}%</div>
+                </div>
+              )}
+              {metrics.precision !== undefined && (
+                <div className="bg-white/5 border border-white/10 p-4 rounded-xl">
+                  <div className="text-xs text-gray-400 uppercase">Precision</div>
+                  <div className="text-2xl font-bold">{(metrics.precision * 100).toFixed(2)}%</div>
+                </div>
+              )}
+              {metrics.recall !== undefined && (
+                <div className="bg-white/5 border border-white/10 p-4 rounded-xl">
+                  <div className="text-xs text-gray-400 uppercase">Recall</div>
+                  <div className="text-2xl font-bold">{(metrics.recall * 100).toFixed(2)}%</div>
+                </div>
+              )}
+              {metrics.f1_score !== undefined && (
+                <div className="bg-white/5 border border-white/10 p-4 rounded-xl">
+                  <div className="text-xs text-gray-400 uppercase">F1 Score</div>
+                  <div className="text-2xl font-bold">{(metrics.f1_score * 100).toFixed(2)}%</div>
+                </div>
+              )}
+              {metrics.rmse !== undefined && (
+                <div className="bg-white/5 border border-white/10 p-4 rounded-xl">
+                  <div className="text-xs text-gray-400 uppercase">RMSE</div>
+                  <div className="text-2xl font-bold">{metrics.rmse.toFixed(4)}</div>
+                </div>
+              )}
+            </div>
+            
+            {metrics.explainability && !metrics.explainability.error && (
+              <div className="mt-10 overflow-hidden bg-white/5 p-6 rounded-2xl border border-white/10">
+                <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-indigo-400"/> SHAP Explainability
+                </h3>
+                <div className="grid md:grid-cols-2 gap-8">
+                  <div>
+                    <h4 className="text-sm text-gray-400 uppercase tracking-widest mb-4">Summary Plot</h4>
+                    {metrics.explainability?.plot_base64 && <img src={`data:image/png;base64,${metrics.explainability.plot_base64}`} alt="SHAP Summary" className="w-full h-auto rounded-lg border border-white/10 bg-white" />}
+                  </div>
+                  <div>
+                    <h4 className="text-sm text-gray-400 uppercase tracking-widest mb-4">Feature Importance</h4>
+                    {metrics.explainability?.bar_plot_base64 && <img src={`data:image/png;base64,${metrics.explainability.bar_plot_base64}`} alt="SHAP Bar" className="w-full h-auto rounded-lg border border-white/10 bg-white" />}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </Section>
   );
 }

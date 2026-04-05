@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 from backend.engines.outlier_engine import OutlierEngine
 from backend.engines.scoring_engine import ScoringEngine
@@ -12,19 +13,23 @@ class CleaningEngine:
             df = df.dropna()
 
         elif strategy == "remove_duplicates":
-            df = df.drop_duplicates()
+            from backend.engines.duplicate_engine import DuplicateEngine
+            df = DuplicateEngine.remove_fuzzy_duplicates(df, list(df.columns), threshold=90.0)
 
         elif strategy == "remove_both":
-            df = df.dropna().drop_duplicates()
+            from backend.engines.duplicate_engine import DuplicateEngine
+            df = df.dropna()
+            df = DuplicateEngine.remove_fuzzy_duplicates(df, list(df.columns), threshold=90.0)
 
         elif strategy == "fill_mean":
-            numeric_cols = df.select_dtypes(include="number").columns
-            for col in numeric_cols:
-                df[col].fillna(df[col].mean(), inplace=True)
+            from backend.engines.imputation_engine import ImputationEngine
+            # using KNN Imputer instead of mean
+            df = ImputationEngine.impute_missing(df, n_neighbors=5)
 
         elif strategy == "fill_mode":
-            for col in df.columns:
-                df[col].fillna(df[col].mode()[0], inplace=True)
+            from backend.engines.imputation_engine import ImputationEngine
+            # using KNN Imputer instead of mode
+            df = ImputationEngine.impute_missing(df, n_neighbors=3)
 
         return df
 
@@ -35,34 +40,34 @@ class CleaningEngine:
 
         rows_before = len(df)
         missing_ratio_before = df.isnull().mean().mean()
-        duplicate_ratio_before = df.duplicated().mean()
+        from backend.engines.duplicate_engine import DuplicateEngine
+        dup_indices_before = DuplicateEngine.detect_fuzzy_duplicates(df, list(df.columns), threshold=95.0)
+        duplicate_ratio_before = len(dup_indices_before) / rows_before if rows_before else 0
 
-        if outlier_method == "iqr":
-            _, outlier_percent_before = OutlierEngine.detect_iqr(df)
-        else:
-            _, outlier_percent_before = OutlierEngine.detect_isolation_forest(df)
+        outlier_percent_before = OutlierEngine.detect_percentage(df, outlier_method)
 
-        score_before = ScoringEngine.calculate_quality_score(
-            missing_ratio_before,
-            duplicate_ratio_before,
-            outlier_percent_before / 100
+        score_before = ScoringEngine.calculate_score(
+            missing_ratio_before * 100,
+            duplicate_ratio_before * 100,
+            outlier_percent_before,
+            0.0 # noisy_pct
         )
 
         df_copy = CleaningEngine.apply_cleaning(df_copy, strategy)
 
         rows_after = len(df_copy)
         missing_ratio_after = df_copy.isnull().mean().mean()
-        duplicate_ratio_after = df_copy.duplicated().mean()
+        from backend.engines.duplicate_engine import DuplicateEngine
+        dup_indices_after = DuplicateEngine.detect_fuzzy_duplicates(df_copy, list(df_copy.columns), threshold=95.0)
+        duplicate_ratio_after = len(dup_indices_after) / len(df_copy) if len(df_copy) else 0
 
-        if outlier_method == "iqr":
-            _, outlier_percent_after = OutlierEngine.detect_iqr(df_copy)
-        else:
-            _, outlier_percent_after = OutlierEngine.detect_isolation_forest(df_copy)
+        outlier_percent_after = OutlierEngine.detect_percentage(df_copy, outlier_method)
 
-        score_after = ScoringEngine.calculate_quality_score(
-            missing_ratio_after,
-            duplicate_ratio_after,
-            outlier_percent_after / 100
+        score_after = ScoringEngine.calculate_score(
+            missing_ratio_after * 100,
+            duplicate_ratio_after * 100,
+            outlier_percent_after,
+            0.0 # noisy_pct
         )
 
         return {

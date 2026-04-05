@@ -40,8 +40,13 @@ from backend.api.recommend import router as recommend_router
 from backend.api.download import router as download_router
 from backend.api.analytics import router as analytics_router  
 from backend.api.history import router as history_router
+from backend.api.ml import router as ml_router
+from backend.core.production import production_middleware, health_router
+from starlette.middleware.base import BaseHTTPMiddleware
 
 # ================= CORS CONFIGURATION =================
+
+app.add_middleware(BaseHTTPMiddleware, dispatch=production_middleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -91,8 +96,11 @@ app.include_router(history_router)
 
 # Analytics already has prefix inside file
 app.include_router(analytics_router)
+app.include_router(ml_router)
 
 # ================= HEALTH CHECK =================
+
+app.include_router(health_router)
 
 @app.get("/")
 def root():

@@ -57,19 +57,20 @@ def simulate(
     if drop_cols:
         df_clean = df_clean.drop(columns=drop_cols, errors="ignore")
 
+    # 1.5 Duplicates
+    if payload_data.get("remove_duplicates", False):
+        from backend.engines.duplicate_engine import DuplicateEngine
+        df_clean = DuplicateEngine.remove_fuzzy_duplicates(df_clean, list(df_clean.columns), threshold=95.0)
+
     # 2. Missing values
     missing_method = payload_data.get("missing_method", "none")
     if missing_method != "none":
         numeric_cols = df_clean.select_dtypes(include=[np.number]).columns
         categorical_cols = df_clean.select_dtypes(exclude=[np.number]).columns
 
-        if missing_method == "smart":
-            if not numeric_cols.empty:
-                df_clean[numeric_cols] = df_clean[numeric_cols].fillna(df_clean[numeric_cols].median())
-            for col in categorical_cols:
-                mode_val = df_clean[col].mode()
-                if not mode_val.empty:
-                    df_clean[col] = df_clean[col].fillna(mode_val.iloc[0])
+        from backend.engines.imputation_engine import ImputationEngine
+        if missing_method == "smart" or missing_method == "knn":
+            df_clean = ImputationEngine.impute_missing(df_clean, n_neighbors=5)
         else:
             if missing_method == "mean":
                 df_clean[numeric_cols] = df_clean[numeric_cols].fillna(df_clean[numeric_cols].mean())

@@ -8,7 +8,7 @@ class SimulationRequest(BaseModel):
     remove_duplicates: bool = False
     outlier_method: Optional[str] = None  # "iqr" or "isolation_forest"
     drop_columns: List[str] = Field(default_factory=list)
-    missing_method: str = Field(default="none", pattern="^(none|mean|median|mode|smart)$")
+    missing_method: str = Field(default="none", pattern="^(none|mean|median|mode|smart|knn)$")
     outlier_action: str = Field(default="fix", pattern="^(fix|remove)$")
     noisy_method: str = Field(default="none")
     noisy_action: str = Field(default="fix", pattern="^(fix|remove)$")
@@ -16,7 +16,7 @@ class SimulationRequest(BaseModel):
     @field_validator("outlier_method")
     @classmethod
     def validate_outlier_method(cls, value: Optional[str]):
-        if value and value not in ["iqr", "mad", "zscore", "isolation", "isolation_forest", "none"]:
+        if value and value not in ["iqr", "mad", "zscore", "isolation", "isolation_forest", "none", "lof", "hybrid"]:
             raise ValueError("Invalid outlier method")
         return value
 

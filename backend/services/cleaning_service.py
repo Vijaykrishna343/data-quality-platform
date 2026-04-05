@@ -44,15 +44,9 @@ def clean_dataframe(df: pd.DataFrame, options: dict) -> pd.DataFrame:
         numeric_cols = df_clean.select_dtypes(include=[np.number]).columns
         categorical_cols = df_clean.select_dtypes(exclude=[np.number]).columns
 
-        if missing_method == "smart":
-            if not numeric_cols.empty:
-                df_clean[numeric_cols] = df_clean[numeric_cols].fillna(
-                    df_clean[numeric_cols].median()
-                )
-            for col in categorical_cols:
-                mode_val = df_clean[col].mode()
-                if not mode_val.empty:
-                    df_clean[col] = df_clean[col].fillna(mode_val.iloc[0])
+        from backend.engines.imputation_engine import ImputationEngine
+        if missing_method == "smart" or missing_method == "knn":
+            df_clean = ImputationEngine.impute_missing(df_clean, n_neighbors=5)
         elif missing_method == "mean" and not numeric_cols.empty:
             df_clean[numeric_cols] = df_clean[numeric_cols].fillna(
                 df_clean[numeric_cols].mean()
