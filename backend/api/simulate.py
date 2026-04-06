@@ -106,6 +106,16 @@ def simulate(
         df_clean, outlier_method if outlier_method != "none" else "iqr"
     )
 
+    if score_after <= score_before:
+        warning_msg = "Cleaning did not improve data quality"
+    else:
+        warning_msg = None
+        
+    if score_before > 0:
+        improvement_percent = ((score_after - score_before) / score_before) * 100
+    else:
+        improvement_percent = 0.0
+
     readiness = ScoringEngine.get_ml_readiness(score_after)
 
     # ================= SAVE CLEANED FILE =================
@@ -118,6 +128,8 @@ def simulate(
         score_before=round(score_before, 2),
         score_after=round(score_after, 2),
         improvement=round(score_after - score_before, 2),
+        improvement_percent=round(improvement_percent, 2),
+        warning=warning_msg,
         rows_before=original_rows,
         rows_after=len(df_clean),
         rows_removed=original_rows - len(df_clean),

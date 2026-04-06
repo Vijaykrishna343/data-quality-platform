@@ -31,6 +31,7 @@ class ScoringEngine:
 
         # Unified Formula
         q = (0.35 * c) + (0.25 * u) + (0.20 * s) + (0.20 * (100.0 - o))
+        q = min(q, 98.0)
         return round(q, 2)
 
     @staticmethod

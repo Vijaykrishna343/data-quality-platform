@@ -45,6 +45,8 @@ class SimulationResponse(BaseModel):
     score_before: float
     score_after: float
     improvement: float
+    improvement_percent: float
+    warning: Optional[str] = None
     rows_before: int
     rows_after: int
     rows_removed: int
