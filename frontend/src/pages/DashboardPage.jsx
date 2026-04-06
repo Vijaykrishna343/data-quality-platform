@@ -1245,6 +1245,18 @@ function MLSection({ datasetId, columns }) {
                   <div className="text-2xl font-bold">{metrics.rmse.toFixed(4)}</div>
                 </div>
               )}
+              {metrics.mae !== undefined && (
+                <div className="bg-white/5 border border-white/10 p-4 rounded-xl">
+                  <div className="text-xs text-gray-400 uppercase">MAE</div>
+                  <div className="text-2xl font-bold">{metrics.mae.toFixed(4)}</div>
+                </div>
+              )}
+              {metrics.r2_score !== undefined && (
+                <div className="bg-white/5 border border-white/10 p-4 rounded-xl">
+                  <div className="text-xs text-gray-400 uppercase">R²</div>
+                  <div className="text-2xl font-bold">{metrics.r2_score.toFixed(4)}</div>
+                </div>
+              )}
             </div>
             
             {metrics.explainability && !metrics.explainability.error && (

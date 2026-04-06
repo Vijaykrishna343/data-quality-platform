@@ -90,15 +90,25 @@ class MLEngine:
                 metrics["explainability"] = {"error": f"SHAP generation failed: {str(e)}"}
         
         elif task_type == "regression":
+            from sklearn.metrics import mean_absolute_error, r2_score
+            if not pd.api.types.is_numeric_dtype(y):
+                raise ValueError("Regression target must be numeric")
             model = lgb.LGBMRegressor(**kwargs)
             model.fit(X_train, y_train, categorical_feature=cat_cols)
             preds = model.predict(X_test)
             metrics["rmse"] = float(np.sqrt(mean_squared_error(y_test, preds)))
+            metrics["mae"] = float(mean_absolute_error(y_test, preds))
+            metrics["r2_score"] = float(r2_score(y_test, preds))
         else:
             raise ValueError(f"Unsupported task_type: {task_type}")
             
         # Monkey-patch the preprocessor into the model to avoid breaking method signature
         model.preprocessor = preprocessor
+
+        import joblib
+        import os
+        os.makedirs("saved_models", exist_ok=True)
+        joblib.dump(model, "saved_models/final_model.pkl")
 
         return model, metrics
 
@@ -175,12 +185,16 @@ class MLEngine:
             # Handle multiclass classification shap values (list of arrays)
             shap_values_to_plot = shap_values[1] if isinstance(shap_values, list) and len(shap_values) > 1 else shap_values
 
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
             # 1) Generate SHAP Visual Summary Plot Export
             plt.figure(figsize=(10, 6))
             shap.summary_plot(shap_values_to_plot, X_test, show=False)
             plt.tight_layout()
             buf = io.BytesIO()
             plt.savefig(buf, format="png", dpi=300, bbox_inches="tight")
+            plt.savefig(f"shap_summary_{timestamp}.png", format="png", dpi=300, bbox_inches="tight")
             plt.close()
             buf.seek(0)
             plot_base64 = base64.b64encode(buf.read()).decode("utf-8")
@@ -191,6 +205,7 @@ class MLEngine:
             plt.tight_layout()
             buf2 = io.BytesIO()
             plt.savefig(buf2, format="png", dpi=300, bbox_inches="tight")
+            plt.savefig(f"shap_bar_{timestamp}.png", format="png", dpi=300, bbox_inches="tight")
             plt.close()
             buf2.seek(0)
             bar_plot_base64 = base64.b64encode(buf2.read()).decode("utf-8")

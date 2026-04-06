@@ -11,19 +11,13 @@ def save_cleaned_file(dataset_id, df):
     return path
 
 
-def read_csv(file_path, **kwargs):
-    """
-    Reads a CSV file into a pandas DataFrame, trying multiple encodings.
-    """
-    encodings = ["utf-8", "latin1", "cp1252"]
-    for encoding in encodings:
-        try:
-            return pd.read_csv(file_path, encoding=encoding, **kwargs)
-        except (UnicodeDecodeError, LookupError):
-            continue
-        except Exception as e:
-            # Re-raise other exceptions that aren't related to encoding
-            raise e
-    
-    # If all encodings fail, try one last time with utf-8 to raise the original UnicodeDecodeError
-    return pd.read_csv(file_path, encoding="utf-8", **kwargs)
+    # If all encodings fail, let pandas throw the default exception, we catch it locally
+    try:
+        df = pd.read_csv(file_path, encoding="utf-8", **kwargs)
+    except Exception as e:
+        raise ValueError(f"Corrupted or unsupported dataset format: {str(e)}")
+        
+    if df.empty:
+        raise ValueError("Uploaded dataset is empty")
+        
+    return df
