@@ -35,25 +35,24 @@ def calculate_outlier_percentage(df: pd.DataFrame, method: str = "iqr") -> float
 def clean_dataframe(df: pd.DataFrame, options: dict) -> pd.DataFrame:
     df_clean = df.copy()
 
+    # 1. Normalize All Strategy Strings (HIGH PRIORITY)
+    missing_method = options.get("missing_method", "none").strip().lower()
+    duplicate_method = options.get("duplicate_method", "none").strip().lower()
+    outlier_method = options.get("outlier_method", "none").strip().lower()
+    noisy_method = options.get("noisy_method", "none").strip().lower()
+    outlier_action = options.get("outlier_action", "fix").strip().lower()
+    noisy_action = options.get("noisy_action", "fix").strip().lower()
+
     drop_columns = options.get("drop_columns", [])
     if drop_columns:
         df_clean = df_clean.drop(columns=drop_columns, errors="ignore")
 
-    # Normalize strategy strings for robustness
-    missing_method = options.get("missing_method", "none").strip().lower()
-    duplicate_method = options.get("duplicate_method", "none").strip().lower()
-    outlier_action = options.get("outlier_action", "fix").strip().lower()
-    outlier_method = options.get("outlier_method", "none").strip().lower()
-    noisy_method = options.get("noisy_method", "none").strip().lower()
-    noisy_action = options.get("noisy_action", "fix").strip().lower()
-
     # ---- Missing value handling ----
     if missing_method != "none":
         numeric_cols = df_clean.select_dtypes(include=[np.number]).columns
-        categorical_cols = df_clean.select_dtypes(exclude=[np.number]).columns
         from backend.engines.imputation_engine import ImputationEngine
+        
         if missing_method in ("smart", "knn"):
-            # Smart/KNN imputation (engine falls back to median for large datasets)
             df_clean = ImputationEngine.impute_missing(df_clean, n_neighbors=5)
         elif missing_method == "mean" and not numeric_cols.empty:
             df_clean[numeric_cols] = df_clean[numeric_cols].fillna(df_clean[numeric_cols].mean())
@@ -65,26 +64,32 @@ def clean_dataframe(df: pd.DataFrame, options: dict) -> pd.DataFrame:
                 if not mode_val.empty:
                     df_clean[col] = df_clean[col].fillna(mode_val.iloc[0])
 
-    # ---- Duplicate removal ----
+    # ---- Fix Missing Duplicate Cleaning Logic (HIGH PRIORITY) ----
     if duplicate_method != "none":
         if len(df_clean) > 50000:
-            # Large dataset: use fast exact duplicate removal
-            df_clean = df_clean.drop_duplicates(keep="first")
+            # Fast exact removal for large datasets
+            df_clean = df_clean.drop_duplicates()
         else:
-            from backend.engines.duplicate_engine import DuplicateEngine
-            df_clean = DuplicateEngine.remove_fuzzy_duplicates(
-                df_clean, list(df_clean.columns), threshold=90.0
-            )
+            # Standard removal first
+            df_clean = df_clean.drop_duplicates()
+            # Then attempt fuzzy removal if engine is functional
+            try:
+                from backend.engines.duplicate_engine import DuplicateEngine
+                df_clean = DuplicateEngine.remove_fuzzy_duplicates(
+                    df_clean, list(df_clean.columns), threshold=90.0
+                )
+            except Exception:
+                # Fallback to just exact duplicates if fuzzy engine fails
+                pass
+
     # ---- Outlier handling ----
-    # outlier_method already normalized above
     if outlier_method != "none":
         if outlier_action == "remove":
             df_clean = OutlierEngine.remove_outliers(df_clean, outlier_method)
         else:
             df_clean = OutlierEngine.fix_outliers(df_clean, outlier_method)
 
-    # ---- Noisy data handling (treated as outlier) ----
-    # noisy_method already normalized above
+    # ---- Noisy data handling (treated as accuracy issue) ----
     if noisy_method != "none":
         if noisy_action == "remove":
             df_clean = OutlierEngine.remove_outliers(df_clean, noisy_method)
@@ -119,19 +124,22 @@ def clean_file(dataset_id: int, options: dict, db: Session | None = None):
         before_score, missing_before, duplicate_before, outlier_before, noisy_before = (
             ScoringEngine.calculate_metrics_and_score(df_before, "iqr")
         )
-        outlier_method = options.get("outlier_method", "none").strip().lower()
-        if outlier_method == "isolation":
-            outlier_method = "isolation_forest"
+        
+        # Determine method for post-cleaning scoring
+        calc_outlier_method = options.get("outlier_method", "iqr").strip().lower()
+        if calc_outlier_method == "none" or not calc_outlier_method:
+            calc_outlier_method = "iqr"
+        if calc_outlier_method == "isolation":
+            calc_outlier_method = "isolation_forest"
+
         after_score, missing_after, duplicate_after, outlier_after, noisy_after = (
-            ScoringEngine.calculate_metrics_and_score(
-                df_after,
-                outlier_method if outlier_method != "none" else "iqr",
-            )
+            ScoringEngine.calculate_metrics_and_score(df_after, calc_outlier_method)
         )
 
         cleaned_path = os.path.join(CLEANED_DIR, f"{dataset.id}.csv")
         df_after.to_csv(cleaned_path, index=False)
 
+        # Calculate improvement delta
         improvement = round(after_score - before_score, 2)
 
         return {
@@ -156,6 +164,7 @@ def clean_file(dataset_id: int, options: dict, db: Session | None = None):
             "rows_removed": len(df_before) - len(df_after),
             "cleaned_path": cleaned_path,
         }
+
     finally:
         if owns_session and db is not None:
             db.close()

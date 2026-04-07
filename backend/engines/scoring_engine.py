@@ -4,17 +4,19 @@ import numpy as np
 
 
 class ScoringEngine:
+    # Weighted Scoring Constants for Maintainability
+    WEIGHT_COMPLETENESS = 0.35  # (1-missing_pct)
+    WEIGHT_UNIQUENESS    = 0.25  # (1-duplicate_pct)
+    WEIGHT_CONSISTENCY   = 0.20  # (1-noisy_pct)
+    WEIGHT_ACCURACY      = 0.20  # (1-outlier_pct)
+
+    SCORE_CAP = 98.0
 
     @staticmethod
     def calculate_score(missing_pct: float, duplicate_pct: float, outlier_pct: float, noisy_pct: float) -> float:
         """
         Unified weighted formula for Data Quality Score.
-        Q = 0.35C + 0.25U + 0.20S + 0.20(100 − O)
-        Where:
-        C = completeness
-        U = uniqueness
-        S = consistency
-        O = outlier percentage
+        Q = 0.35*C + 0.25*U + 0.20*S + 0.20*(100 - O)
         """
         def safe_pct(v):
             return min(100.0, max(0.0, float(v or 0.0)))
@@ -24,15 +26,23 @@ class ScoringEngine:
         o = safe_pct(outlier_pct)
         n = safe_pct(noisy_pct)
 
-        # C = completeness, U = uniqueness, S = consistency
-        c = 100.0 - m
-        u = 100.0 - d
-        s = 100.0 - n
+        # Component Metrics
+        c = 100.0 - m  # Completeness
+        u = 100.0 - d  # Uniqueness
+        s = 100.0 - n  # Consistency (Noisy Data)
+        
+        # Weighted Scoring Logic
+        score = (
+            (ScoringEngine.WEIGHT_COMPLETENESS * c) +
+            (ScoringEngine.WEIGHT_UNIQUENESS    * u) +
+            (ScoringEngine.WEIGHT_CONSISTENCY   * s) +
+            (ScoringEngine.WEIGHT_ACCURACY      * (100.0 - o))
+        )
 
-        # Unified Formula
-        q = (0.35 * c) + (0.25 * u) + (0.20 * s) + (0.20 * (100.0 - o))
-        q = min(q, 98.0)
-        return round(q, 2)
+        # Apply Realistic Score Cap
+        final_score = min(score, ScoringEngine.SCORE_CAP)
+        
+        return round(final_score, 2)
 
     @staticmethod
     def calculate_metrics_and_score(df: pd.DataFrame, outlier_method: str = "iqr"):
