@@ -121,12 +121,13 @@ def get_full_analytics(
         logger.info(f"Analytics start — dataset={dataset_id} rows={total_rows}")
 
         # Scoring (sampled)
-        quality_score, m_pct, d_pct, o_pct, n_pct = (
+        quality_score, m_pct, d_pct, o_pct, n_pct, m_cells_s, m_rows_s = (
             ScoringEngine.calculate_metrics_and_score(df_s, "iqr")
         )
 
         # Full-DF simple counts
-        missing_count   = int(df.isnull().any(axis=1).sum())
+        missing_rows    = int(df.isnull().any(axis=1).sum())
+        missing_cells   = int(df.isnull().sum().sum())
         duplicate_count = int(df.duplicated(keep="first").sum())
 
         # Completeness & Importance (sampled)
@@ -155,7 +156,8 @@ def get_full_analytics(
             "profile": {
                 "rows":            total_rows,
                 "columns":         total_cols,
-                "missing_count":   missing_count,
+                "missing_rows":    missing_rows,
+                "missing_cells":   missing_cells,
                 "duplicate_count": duplicate_count,
                 "quality_score":   round(quality_score, 2),
                 "completeness":    round(completeness, 2),

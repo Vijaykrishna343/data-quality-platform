@@ -54,7 +54,8 @@ class ScoringEngine:
             return 0.0, 0.0, 0.0, 0.0, 0.0
             
         # Optimized Missing Value Calculation (Vectorized)
-        missing_rows = df.isna().any(axis=1).sum()
+        missing_rows = int(df.isna().any(axis=1).sum())
+        missing_cells = int(df.isna().sum().sum())
         missing_pct = (missing_rows / total_rows) * 100
         
         # Fuzzy duplicates are already optimized in DuplicateEngine (with sampling)
@@ -82,7 +83,7 @@ class ScoringEngine:
                 noisy_pct = (noisy_cells / numeric_df.size) * 100
                 
         score = ScoringEngine.calculate_score(missing_pct, duplicate_pct, outlier_pct, noisy_pct)
-        return score, missing_pct, duplicate_pct, outlier_pct, noisy_pct
+        return score, missing_pct, duplicate_pct, outlier_pct, noisy_pct, missing_cells, missing_rows
 
     @staticmethod
     def get_ml_readiness(score):

@@ -123,7 +123,7 @@ def _run_background_pipeline(task_id: str, file_path: str, filename: str):
         update_task(task_id, "scoring")
         from backend.engines.scoring_engine import ScoringEngine
         df_sample = df.sample(n=min(10_000, len(df)), random_state=42)
-        (quality_score, m_pct, d_pct, o_pct, n_pct) = (
+        (quality_score, m_pct, d_pct, o_pct, n_pct, m_cells, m_rows) = (
             ScoringEngine.calculate_metrics_and_score(df_sample, "iqr")
         )
 
@@ -178,7 +178,8 @@ def _run_background_pipeline(task_id: str, file_path: str, filename: str):
             "profile": {
                 "rows":           len(df),
                 "columns":        len(df.columns),
-                "missing_count":  int(df.isnull().any(axis=1).sum()),
+                "missing_rows":   int(df.isnull().any(axis=1).sum()),
+                "missing_cells":  int(df.isnull().sum().sum()),
                 "duplicate_count": int(df.duplicated(keep="first").sum()),
                 "quality_score":  round(quality_score, 2),
                 "completeness":   round(completeness, 2),

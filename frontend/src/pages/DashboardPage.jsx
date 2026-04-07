@@ -26,7 +26,8 @@ import {
   CheckCircle,
   Sparkles,
   ArrowRight,
-  ShieldCheck
+  ShieldCheck,
+  FileX
 } from "lucide-react";
 
 const PAGE_SIZE = 20;
@@ -305,7 +306,7 @@ export default function DashboardPage() {
         </div>
         <StatsGrid
           profile={analytics.profile}
-          outlierPercentage={analytics.outliers?.overall_percentage}
+          outlierPercentage={cleanResult ? cleanResult.outlier_pct_after : analytics.outliers?.overall_percentage}
           noisyPercentage={analytics.outliers?.noisy_percentage}
         />
         <MLBadge
@@ -470,34 +471,36 @@ export default function DashboardPage() {
 
           <div className="grid md:grid-cols-2 gap-10">
             {/* 2. Outlier Detection */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 bg-orange-500/20 rounded-lg">
-                    <AlertTriangle className="w-4 h-4 text-orange-400" />
+            {analytics.outliers?.overall_percentage > 0 && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-orange-500/20 rounded-lg">
+                      <AlertTriangle className="w-4 h-4 text-orange-400" />
+                    </div>
+                    <h3 className="text-gray-200 font-bold uppercase tracking-widest text-[10px]">Outlier Handling</h3>
                   </div>
-                  <h3 className="text-gray-200 font-bold uppercase tracking-widest text-[10px]">Outlier Handling</h3>
+                  <ActionToggle active={outlierAction} onClick={setOutlierAction} />
                 </div>
-                <ActionToggle active={outlierAction} onClick={setOutlierAction} />
+                <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+                  {[
+                    { label: "None", value: "none" },
+                    { label: "IQR", value: "iqr" },
+                    { label: "Isolation", value: "isolation" },
+                    { label: "MAD", value: "mad" },
+                    { label: "LOF", value: "lof" },
+                    { label: "Hybrid", value: "hybrid" },
+                  ].map((m) => (
+                    <MethodButton
+                      key={m.value}
+                      active={outlierMethod === m.value}
+                      onClick={() => setOutlierMethod(m.value)}
+                      label={m.label}
+                    />
+                  ))}
+                </div>
               </div>
-              <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
-                {[
-                  { label: "None", value: "none" },
-                  { label: "IQR", value: "iqr" },
-                  { label: "Isolation", value: "isolation" },
-                  { label: "MAD", value: "mad" },
-                  { label: "LOF", value: "lof" },
-                  { label: "Hybrid", value: "hybrid" },
-                ].map((m) => (
-                  <MethodButton
-                    key={m.value}
-                    active={outlierMethod === m.value}
-                    onClick={() => setOutlierMethod(m.value)}
-                    label={m.label}
-                  />
-                ))}
-              </div>
-            </div>
+            )}
 
             {/* 3. Noisy Data Detection (Conditional) */}
             {analytics.outliers?.noisy_percentage > 0 && (
@@ -758,7 +761,8 @@ function StatsGrid({ profile, outlierPercentage, noisyPercentage }) {
   const stats = [
     { label: "Rows", value: profile.rows, icon: <ArrowRight className="w-3 h-3" /> },
     { label: "Columns", value: profile.columns, icon: <ArrowRight className="w-3 h-3" /> },
-    { label: "Missing Rows", value: profile.missing_count, icon: <AlertOctagon className="w-3 h-3" /> },
+    { label: "Missing Rows", value: profile.missing_rows, icon: <AlertOctagon className="w-3 h-3" /> },
+    { label: "Missing Cells", value: profile.missing_cells, icon: <FileX className="w-3 h-3" /> },
     { label: "Duplicates", value: profile.duplicate_count, icon: <AlertOctagon className="w-3 h-3" /> },
     {
       label: "Outlier Percentage",

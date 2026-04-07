@@ -50,6 +50,8 @@ class SimulationResponse(BaseModel):
     rows_before: int
     rows_after: int
     rows_removed: int
+    outlier_pct_before: float
+    outlier_pct_after: float
     ml_readiness_after: Dict[str, str]
 
 

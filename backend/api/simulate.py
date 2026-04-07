@@ -58,7 +58,7 @@ def simulate(
     original_rows  = len(df_original)
 
     # ── Before score (sampled) ────────────────────────────────────────────────
-    score_before, *_ = _score_sample(df_original, "iqr")
+    score_before, m_pct_b, d_pct_b, outlier_pct_before, *_ = _score_sample(df_original, "iqr")
 
     payload_data   = payload.model_dump()
     outlier_method = payload_data.get("outlier_method") or "none"
@@ -133,7 +133,7 @@ def simulate(
 
     # ── After score (sampled) ─────────────────────────────────────────────────
     eff_method   = outlier_method if outlier_method != "none" else "iqr"
-    score_after, *_ = _score_sample(df_clean, eff_method)
+    score_after, m_pct_a, d_pct_a, outlier_pct_after, *_ = _score_sample(df_clean, eff_method)
 
     warning_msg  = (
         "Cleaning did not improve data quality" if score_after <= score_before else None
@@ -158,6 +158,8 @@ def simulate(
         rows_before=original_rows,
         rows_after=len(df_clean),
         rows_removed=original_rows - len(df_clean),
+        outlier_pct_before=round(outlier_pct_before, 2),
+        outlier_pct_after=round(outlier_pct_after, 2),
         ml_readiness_after={
             "label": readiness["status"],
             "color": readiness["color"],
