@@ -11,10 +11,17 @@ class ImputationEngine:
         if numeric_cols.empty:
             return df_imputed
 
-        imputer = KNNImputer(n_neighbors=n_neighbors)
-        df_imputed[numeric_cols] = imputer.fit_transform(df_imputed[numeric_cols])
+        # Optimization: Use median imputation for large datasets to avoid O(N^2) / O(N*K) KNN slow down
+        if len(df_imputed) > 10000:
+            for col in numeric_cols:
+                if df_imputed[col].isnull().any():
+                    median_val = df_imputed[col].median()
+                    df_imputed[col] = df_imputed[col].fillna(median_val)
+        else:
+            imputer = KNNImputer(n_neighbors=n_neighbors)
+            df_imputed[numeric_cols] = imputer.fit_transform(df_imputed[numeric_cols])
         
-        # For categorical columns, we can fill with mode
+        # Categorical columns: fill with mode
         cat_cols = df_imputed.select_dtypes(exclude=[np.number]).columns
         for col in cat_cols:
             if df_imputed[col].isnull().any():

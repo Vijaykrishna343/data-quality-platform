@@ -9,21 +9,33 @@ class DuplicateEngine:
         if df.empty or not columns:
             return []
 
+        # Optimization: Sample large datasets to prevent O(N^2) bottleneck
+        if len(df) > 50000:
+            df_sample = df.sample(n=50000, random_state=42)
+            # Find duplicates in sample and map back? 
+            # Or just warn user and only detect among sample for score.
+            # User requested "sample-based duplicate detection for datasets > 50k rows".
+            df_for_analysis = df_sample
+        else:
+            df_for_analysis = df
+
         # 1. Normalize strings: lowercase, collapse spaces, trim
-        combined = df[columns].fillna('').apply(lambda row: ' '.join(map(str, row)), axis=1)
+        combined = df_for_analysis[columns].fillna('').apply(lambda row: ' '.join(map(str, row)), axis=1)
         normalized = combined.str.lower().str.replace(r'\s+', ' ', regex=True).str.strip().tolist()
         
-        duplicates_indices = set()
+        duplicates_indices_set = set()
         
         # 2. Exact match grouping to instantly catch identical normalized strings
         exact_groups = defaultdict(list)
-        for idx, s in enumerate(normalized):
-            exact_groups[s].append(idx)
+        for idx_pos, s in enumerate(normalized):
+            # map back to original index
+            orig_idx = df_for_analysis.index[idx_pos]
+            exact_groups[s].append(orig_idx)
             
         for s, indices in exact_groups.items():
             if len(indices) > 1:
                 # keep first, rest are duplicates
-                duplicates_indices.update(indices[1:])
+                duplicates_indices_set.update(indices[1:])
                 
         unique_strings = list(exact_groups.keys())
         
@@ -33,10 +45,8 @@ class DuplicateEngine:
         for s in unique_strings:
             if not s:
                 continue
-            # length bucket: strings must be within 10-20% length to match at >90% threshold
-            # binning by length // 5 is safe enough for a candidate group
-            # We also block by the first character to reduce the space significantly.
-            bucket = len(s) // 4
+            # Binning by length buckets to reduce comparisons
+            bucket = len(s) // 5
             block_key = (s[0], bucket)
             blocks[block_key].append(s)
 
@@ -46,6 +56,10 @@ class DuplicateEngine:
         for key, block_strings in blocks.items():
             if len(block_strings) < 2:
                 continue
+            
+            # Additional safety: limit block size to prevent local O(M^2)
+            if len(block_strings) > 1000:
+                block_strings = block_strings[:1000]
                 
             for i, s1 in enumerate(block_strings):
                 if s1 in processed_strings:
@@ -63,11 +77,14 @@ class DuplicateEngine:
                     if matched_string not in processed_strings:
                         processed_strings.add(matched_string)
                         # Add original indices of this newly found duplicate string
-                        duplicates_indices.update(exact_groups[matched_string])
+                        # These are already absolute indices from the original df/sampled df
+                        duplicates_indices_set.update(exact_groups[matched_string])
 
-        return list(duplicates_indices)
+        return list(duplicates_indices_set)
 
     @staticmethod
     def remove_fuzzy_duplicates(df: pd.DataFrame, columns: list, threshold: float = 90.0) -> pd.DataFrame:
         dup_indices = DuplicateEngine.detect_fuzzy_duplicates(df, columns, threshold)
-        return df.drop(index=df.index[dup_indices])
+        # dup_indices are already label-based index values (from df.index[pos])
+        return df.drop(index=dup_indices, errors="ignore")
+

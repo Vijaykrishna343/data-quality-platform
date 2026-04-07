@@ -30,6 +30,21 @@ app = FastAPI(
 def create_tables():
     Base.metadata.create_all(bind=engine)
 
+@app.on_event("startup")
+def start_task_cleanup():
+    """Remove tasks older than 1 hour every 30 minutes."""
+    import threading
+    from backend.api.tasks import cleanup_old_tasks
+
+    def _loop():
+        import time
+        while True:
+            time.sleep(1800)
+            cleanup_old_tasks(max_age_seconds=3600)
+
+    t = threading.Thread(target=_loop, daemon=True)
+    t.start()
+
 # ================= ROUTER IMPORTS =================
 
 from backend.api.upload import router as upload_router

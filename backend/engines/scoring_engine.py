@@ -37,30 +37,38 @@ class ScoringEngine:
     @staticmethod
     def calculate_metrics_and_score(df: pd.DataFrame, outlier_method: str = "iqr"):
         from backend.engines.outlier_engine import OutlierEngine
+        from backend.engines.duplicate_engine import DuplicateEngine
         
         total_rows = len(df)
         if total_rows == 0:
             return 0.0, 0.0, 0.0, 0.0, 0.0
             
-        missing_rows = df.isnull().any(axis=1).sum()
+        # Optimized Missing Value Calculation (Vectorized)
+        missing_rows = df.isna().any(axis=1).sum()
         missing_pct = (missing_rows / total_rows) * 100
         
-        from backend.engines.duplicate_engine import DuplicateEngine
+        # Fuzzy duplicates are already optimized in DuplicateEngine (with sampling)
         dup_indices = DuplicateEngine.detect_fuzzy_duplicates(df, list(df.columns), threshold=95.0)
         duplicate_pct = (len(dup_indices) / total_rows) * 100
         
+        # Outlier detection (vectorized inside OutlierEngine)
         outlier_pct = OutlierEngine.detect_percentage(df, outlier_method)
         
+        # Vectorized Noisy Data Detection (Z-Score > 3)
         numeric_df = df.select_dtypes(include=[np.number])
         noisy_pct = 0.0
         if not numeric_df.empty and total_rows > 1:
+            # Vectorized z-score calculation across all numeric columns
+            # We use handles for means and stds to avoid repeated computation
             means = numeric_df.mean()
             stds = numeric_df.std()
-            valid_std_mask = stds > 0
-            if valid_std_mask.any():
-                active_numeric = numeric_df.loc[:, valid_std_mask]
-                z_scores = np.abs((active_numeric - means[valid_std_mask]) / stds[valid_std_mask])
-                noisy_cells = (z_scores > 3).sum().sum()
+            
+            # Filter columns with 0 variance to avoid division by zero
+            valid_cols = stds[stds > 0].index
+            if not valid_cols.empty:
+                active_df = numeric_df[valid_cols]
+                z_scores = (active_df - means[valid_cols]) / stds[valid_cols]
+                noisy_cells = (np.abs(z_scores) > 3).values.sum()
                 noisy_pct = (noisy_cells / numeric_df.size) * 100
                 
         score = ScoringEngine.calculate_score(missing_pct, duplicate_pct, outlier_pct, noisy_pct)

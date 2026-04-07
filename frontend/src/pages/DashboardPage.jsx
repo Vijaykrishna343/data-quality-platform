@@ -42,6 +42,10 @@ export default function DashboardPage() {
   const [totalRows, setTotalRows] = useState(0);
   const [cleaningLoading, setCleaningLoading] = useState(false);
   const [loadError, setLoadError] = useState(null);
+  const [fromCache, setFromCache] = useState(false);
+
+  // Analytics loading progress
+  const [analyticsProgress, setAnalyticsProgress] = useState(0);
 
   // Advanced Cleaning States
   const [missingMethod, setMissingMethod] = useState("smart");
@@ -71,10 +75,40 @@ export default function DashboardPage() {
     }
   };
 
+  const [loadingMessage, setLoadingMessage] = useState("Initializing intelligence engine...");
+
+  // Simulate analytics loading progress steps when fetching
+  const LOAD_STEPS = [
+    { pct: 10, msg: "Connecting to dataset..." },
+    { pct: 30, msg: "Reading dataset structure..." },
+    { pct: 55, msg: "Calculating quality score..." },
+    { pct: 75, msg: "Generating analytics report..." },
+    { pct: 90, msg: "Building AI recommendations..." },
+    { pct: 98, msg: "Finalising dashboard..." },
+  ];
+
+  const startLoadProgress = () => {
+    let idx = 0;
+    setAnalyticsProgress(5);
+    setLoadingMessage(LOAD_STEPS[0].msg);
+    const timer = setInterval(() => {
+      idx = Math.min(idx + 1, LOAD_STEPS.length - 1);
+      setAnalyticsProgress(LOAD_STEPS[idx].pct);
+      setLoadingMessage(LOAD_STEPS[idx].msg);
+      if (idx === LOAD_STEPS.length - 1) clearInterval(timer);
+    }, 800);
+    return timer;
+  };
+
   const runCleaning = useCallback(async () => {
     setCleaningLoading(true);
     setHasExecuted(true);
+    setLoadingMessage("Refining dataset quality...");
     try {
+      // Simulate status changes for better UX
+      setTimeout(() => setLoadingMessage("Applying imputation algorithms..."), 1000);
+      setTimeout(() => setLoadingMessage("Verifying outlier thresholds..."), 2500);
+      
       const res = await simulateCleaning(datasetId, {
         missing_method: missingMethod,
         outlier_method: outlierMethod,
@@ -101,6 +135,7 @@ export default function DashboardPage() {
       console.error("Cleaning failed", error);
     } finally {
       setCleaningLoading(false);
+      setLoadingMessage("");
     }
   }, [
     datasetId,
@@ -113,20 +148,33 @@ export default function DashboardPage() {
     outlierMethod,
   ]);
 
-  useEffect(() => {
-    const init = async () => {
-      try {
-        const res = await getAnalytics(datasetId);
-        setAnalytics(res.data);
-        await loadPreview(1);
-      } catch (err) {
-        console.error("Failed to load analytics:", err);
-        setLoadError(err?.response?.data?.detail || "Failed to load dataset analytics. The file might have been removed.");
-      }
-    };
+  const loadAnalytics = async (invalidate = false) => {
+    setAnalytics(null);
+    setLoadError(null);
+    const progressTimer = startLoadProgress();
 
-    init();
-  }, [datasetId, loadPreview]);
+    try {
+      const [anaRes] = await Promise.all([
+        getAnalytics(datasetId, invalidate),
+        loadPreview(1),
+      ]);
+      setAnalytics(anaRes.data);
+      // If server returned a cached copy it resolves instantly
+      setFromCache(!invalidate);
+      setAnalyticsProgress(100);
+      setLoadingMessage("Dashboard ready ✓");
+    } catch (err) {
+      console.error("Failed to load analytics:", err);
+      setLoadError(err?.response?.data?.detail || "Failed to load dataset analytics.");
+    } finally {
+      clearInterval(progressTimer);
+    }
+  };
+
+  useEffect(() => {
+    if (!datasetId) return;
+    loadAnalytics(false);
+  }, [datasetId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 🚀 Dynamic Cleaning Simulation (Debounced)
   useEffect(() => {
@@ -152,7 +200,7 @@ export default function DashboardPage() {
   const handleDownload = async () => {
     await downloadCleanedDataset(datasetId);
   };
-
+  
   if (loadError)
     return (
       <div className="flex flex-col items-center justify-center h-screen bg-[#0f172a] text-white space-y-4">
@@ -170,8 +218,29 @@ export default function DashboardPage() {
 
   if (!analytics)
     return (
-      <div className="flex items-center justify-center h-screen bg-[#0f172a] text-white">
-        Loading analytics...
+      <div className="flex flex-col items-center justify-center h-screen bg-[#0f172a] text-white gap-6 px-8">
+        <div className="w-16 h-16 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin" />
+        <div className="text-lg font-bold tracking-widest uppercase text-indigo-300 animate-pulse">
+          {loadingMessage}
+        </div>
+        {/* Progress bar */}
+        <div className="w-full max-w-md">
+          <div className="flex justify-between text-xs text-gray-500 mb-1 font-medium">
+            <span>Processing…</span>
+            <span>{analyticsProgress}%</span>
+          </div>
+          <div className="relative w-full h-2 bg-white/5 rounded-full overflow-hidden border border-white/10">
+            <div
+              className="absolute inset-y-0 left-0 rounded-full transition-all duration-700 ease-out"
+              style={{
+                width: `${analyticsProgress}%`,
+                background: "linear-gradient(90deg, #6366f1 0%, #a855f7 60%, #ec4899 100%)",
+                boxShadow: "0 0 10px rgba(139,92,246,0.5)",
+              }}
+            />
+          </div>
+        </div>
+        <p className="text-gray-600 text-xs">This may take a moment for large datasets…</p>
       </div>
     );
 
@@ -211,6 +280,29 @@ export default function DashboardPage() {
 
       {/* OVERVIEW */}
       <Section title="Dataset Overview">
+        {/* Cache indicator + Refresh */}
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+          <div className="flex items-center gap-2">
+            {fromCache ? (
+              <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[11px] font-semibold">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
+                Loaded from cache — instant ⚡
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 text-[11px] font-semibold">
+                <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 inline-block" />
+                Freshly computed
+              </span>
+            )}
+          </div>
+          <button
+            onClick={() => loadAnalytics(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-gray-400 hover:text-white text-[11px] font-semibold transition-all duration-200"
+            title="Force recompute analytics (bypass cache)"
+          >
+            🔄 Refresh Analytics
+          </button>
+        </div>
         <StatsGrid
           profile={analytics.profile}
           outlierPercentage={analytics.outliers?.overall_percentage}

@@ -156,8 +156,11 @@ class MLEngine:
         Generates SHAP explainability and feature importance values for the model.
         Also exports visual summary plots.
         """
+        # Optimization: SHAP is O(N_rows * N_features), sample for large datasets
+        X_test_sample = X_test.sample(min(200, len(X_test))) if len(X_test) > 0 else X_test
+        
         explainer = shap.TreeExplainer(model)
-        shap_values = explainer.shap_values(X_test)
+        shap_values = explainer.shap_values(X_test_sample)
         
         # Normalize shap_values to list of 2D arrays if it's 3D (N, F, C)
         if hasattr(shap_values, "shape") and len(shap_values.shape) == 3:
@@ -171,7 +174,7 @@ class MLEngine:
             # Binary classification or regression: 2D array
             mean_abs_shap = np.abs(shap_values).mean(axis=0)
             
-        contributions = {str(col): float(val) for col, val in zip(X_test.columns, mean_abs_shap)}
+        contributions = {str(col): float(val) for col, val in zip(X_test_sample.columns, mean_abs_shap)}
         
         # Sort features by importance
         feature_importance = dict(sorted(contributions.items(), key=lambda x: x[1], reverse=True))
@@ -190,7 +193,7 @@ class MLEngine:
             
             # 1) Generate SHAP Visual Summary Plot Export
             plt.figure(figsize=(10, 6))
-            shap.summary_plot(shap_values_to_plot, X_test, show=False)
+            shap.summary_plot(shap_values_to_plot, X_test_sample, show=False)
             plt.tight_layout()
             buf = io.BytesIO()
             plt.savefig(buf, format="png", dpi=300, bbox_inches="tight")
@@ -201,7 +204,7 @@ class MLEngine:
             
             # 2) Generate Optional Additional Plot (bar chart style)
             plt.figure(figsize=(10, 6))
-            shap.summary_plot(shap_values, X_test, plot_type="bar", show=False)
+            shap.summary_plot(shap_values, X_test_sample, plot_type="bar", show=False)
             plt.tight_layout()
             buf2 = io.BytesIO()
             plt.savefig(buf2, format="png", dpi=300, bbox_inches="tight")
