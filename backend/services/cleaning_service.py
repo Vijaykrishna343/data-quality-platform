@@ -39,41 +39,52 @@ def clean_dataframe(df: pd.DataFrame, options: dict) -> pd.DataFrame:
     if drop_columns:
         df_clean = df_clean.drop(columns=drop_columns, errors="ignore")
 
-    missing_method = options.get("missing_method", "none")
+    # Normalize strategy strings for robustness
+    missing_method = options.get("missing_method", "none").strip().lower()
+    duplicate_method = options.get("duplicate_method", "none").strip().lower()
+    outlier_action = options.get("outlier_action", "fix").strip().lower()
+    outlier_method = options.get("outlier_method", "none").strip().lower()
+    noisy_method = options.get("noisy_method", "none").strip().lower()
+    noisy_action = options.get("noisy_action", "fix").strip().lower()
+
+    # ---- Missing value handling ----
     if missing_method != "none":
         numeric_cols = df_clean.select_dtypes(include=[np.number]).columns
         categorical_cols = df_clean.select_dtypes(exclude=[np.number]).columns
-
         from backend.engines.imputation_engine import ImputationEngine
-        if missing_method == "smart" or missing_method == "knn":
+        if missing_method in ("smart", "knn"):
+            # Smart/KNN imputation (engine falls back to median for large datasets)
             df_clean = ImputationEngine.impute_missing(df_clean, n_neighbors=5)
         elif missing_method == "mean" and not numeric_cols.empty:
-            df_clean[numeric_cols] = df_clean[numeric_cols].fillna(
-                df_clean[numeric_cols].mean()
-            )
+            df_clean[numeric_cols] = df_clean[numeric_cols].fillna(df_clean[numeric_cols].mean())
         elif missing_method == "median" and not numeric_cols.empty:
-            df_clean[numeric_cols] = df_clean[numeric_cols].fillna(
-                df_clean[numeric_cols].median()
-            )
+            df_clean[numeric_cols] = df_clean[numeric_cols].fillna(df_clean[numeric_cols].median())
         elif missing_method == "mode":
             for col in df_clean.columns:
                 mode_val = df_clean[col].mode()
                 if not mode_val.empty:
                     df_clean[col] = df_clean[col].fillna(mode_val.iloc[0])
 
-    outlier_method = options.get("outlier_method") or "none"
-    if outlier_method == "isolation":
-        outlier_method = "isolation_forest"
-    outlier_action = options.get("outlier_action", "fix")
-
+    # ---- Duplicate removal ----
+    if duplicate_method != "none":
+        if len(df_clean) > 50000:
+            # Large dataset: use fast exact duplicate removal
+            df_clean = df_clean.drop_duplicates(keep="first")
+        else:
+            from backend.engines.duplicate_engine import DuplicateEngine
+            df_clean = DuplicateEngine.remove_fuzzy_duplicates(
+                df_clean, list(df_clean.columns), threshold=90.0
+            )
+    # ---- Outlier handling ----
+    # outlier_method already normalized above
     if outlier_method != "none":
         if outlier_action == "remove":
             df_clean = OutlierEngine.remove_outliers(df_clean, outlier_method)
         else:
             df_clean = OutlierEngine.fix_outliers(df_clean, outlier_method)
 
-    noisy_method = options.get("noisy_method", "none")
-    noisy_action = options.get("noisy_action", "fix")
+    # ---- Noisy data handling (treated as outlier) ----
+    # noisy_method already normalized above
     if noisy_method != "none":
         if noisy_action == "remove":
             df_clean = OutlierEngine.remove_outliers(df_clean, noisy_method)
@@ -108,7 +119,7 @@ def clean_file(dataset_id: int, options: dict, db: Session | None = None):
         before_score, missing_before, duplicate_before, outlier_before, noisy_before = (
             ScoringEngine.calculate_metrics_and_score(df_before, "iqr")
         )
-        outlier_method = options.get("outlier_method") or "none"
+        outlier_method = options.get("outlier_method", "none").strip().lower()
         if outlier_method == "isolation":
             outlier_method = "isolation_forest"
         after_score, missing_after, duplicate_after, outlier_after, noisy_after = (
@@ -120,6 +131,8 @@ def clean_file(dataset_id: int, options: dict, db: Session | None = None):
 
         cleaned_path = os.path.join(CLEANED_DIR, f"{dataset.id}.csv")
         df_after.to_csv(cleaned_path, index=False)
+
+        improvement = round(after_score - before_score, 2)
 
         return {
             "before": {
@@ -136,6 +149,7 @@ def clean_file(dataset_id: int, options: dict, db: Session | None = None):
                 "noisy_pct": round(noisy_after, 2),
                 "score": round(after_score, 2),
             },
+            "improvement": improvement,
             "ml_readiness": ScoringEngine.get_ml_readiness(after_score),
             "cleaned_rows": len(df_after),
             "original_rows": len(df_before),
