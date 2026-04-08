@@ -92,25 +92,37 @@ def get_full_analytics(
 
     logger.info(f"Cache MISS — computing analytics for dataset_id={dataset_id}")
 
-    # ── 3. Auto-clean on first visit ────────────────────────────────────────
+    # ── 3. Auto-clean on first visit (duplicates) ───────────────────────────
     meta_path       = file_path.replace(".csv", "_meta.json")
     auto_clean_report: dict = {}
-
+    
+    # We load the raw DF first to get accurate initial counts
+    df_raw = read_csv_optimised(file_path)
+    
+    # Accuracy fix: replace common missing strings before counting
+    df_norm = df_raw.copy()
+    obj_cols = df_norm.select_dtypes(include=['object']).columns
+    if len(obj_cols) > 0:
+        df_norm[obj_cols] = df_norm[obj_cols].apply(lambda col: col.map(lambda x: x.strip() if isinstance(x, str) else x))
+    df_norm.replace(['', 'NA', 'N/A', 'null', 'NULL', 'None', 'none', 'nan', '?', '-'], np.nan, inplace=True)
+    
+    initial_rows = len(df_raw)
+    missing_rows_total = int(df_norm.isna().all(axis=1).sum())
+    missing_cells_total = int(df_norm.isnull().sum().sum())
+    duplicate_count_total = int(df_raw.duplicated(keep="first").sum())
+    
     if os.path.exists(meta_path):
         with open(meta_path) as f:
             auto_clean_report = json.load(f)
-        df = read_csv_optimised(file_path)
+        df = df_raw.drop_duplicates(keep="first") # Ensure df remains consistent with cache/meta
     else:
-        df              = read_csv_optimised(file_path)
-        initial_rows    = len(df)
-        df              = df.drop_duplicates(keep="first")
+        df              = df_raw.drop_duplicates(keep="first")
         dups_removed    = initial_rows - len(df)
         auto_clean_report = {"duplicates_removed": dups_removed}
-        df.to_csv(file_path, index=False)
         with open(meta_path, "w") as f:
             json.dump(auto_clean_report, f)
 
-    total_rows = len(df)
+    total_rows = len(df) # Remaining rows after auto-clean
     total_cols = len(df.columns)
 
     # ── 4. Sample for heavy analytics ───────────────────────────────────────
@@ -125,10 +137,10 @@ def get_full_analytics(
             ScoringEngine.calculate_metrics_and_score(df_s, "iqr")
         )
 
-        # Full-DF simple counts
-        missing_rows    = int(df.isnull().any(axis=1).sum())
-        missing_cells   = int(df.isnull().sum().sum())
-        duplicate_count = int(df.duplicated(keep="first").sum())
+        # Use pre-calculated full-DF simple counts for accuracy
+        missing_rows    = missing_rows_total
+        missing_cells   = missing_cells_total
+        duplicate_count = duplicate_count_total
 
         # Completeness & Importance (sampled)
         completeness    = CompletenessEngine.calculate(df_s)

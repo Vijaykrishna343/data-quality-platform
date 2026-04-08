@@ -18,6 +18,11 @@ class ImputationEngine:
                     median_val = df_imputed[col].median()
                     df_imputed[col] = df_imputed[col].fillna(median_val)
         else:
+            # Fill columns that are completely NaN with 0 because KNNImputer cannot handle them
+            is_all_nan = df_imputed[numeric_cols].isnull().all()
+            if is_all_nan.any():
+                df_imputed[is_all_nan[is_all_nan].index] = 0
+                
             imputer = KNNImputer(n_neighbors=n_neighbors)
             df_imputed[numeric_cols] = imputer.fit_transform(df_imputed[numeric_cols])
         

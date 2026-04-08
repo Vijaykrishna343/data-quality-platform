@@ -37,6 +37,9 @@ export default function DashboardPage() {
 
   const [analytics, setAnalytics] = useState(null);
   const [cleanResult, setCleanResult] = useState(null);
+  useEffect(() => {
+    console.log("ANALYTICS:", analytics);
+  }, [analytics]);
   const [rows, setRows] = useState([]);
   const [columns, setColumns] = useState([]);
   const [page, setPage] = useState(1);
@@ -109,7 +112,7 @@ export default function DashboardPage() {
       // Simulate status changes for better UX
       setTimeout(() => setLoadingMessage("Applying imputation algorithms..."), 1000);
       setTimeout(() => setLoadingMessage("Verifying outlier thresholds..."), 2500);
-      
+
       const res = await simulateCleaning(datasetId, {
         missing_method: missingMethod,
         outlier_method: outlierMethod,
@@ -134,6 +137,7 @@ export default function DashboardPage() {
       await loadPreview(1);
     } catch (error) {
       console.error("Cleaning failed", error);
+      setLoadError(error?.response?.data?.detail || "Cleaning pipeline failed to execute.");
     } finally {
       setCleaningLoading(false);
       setLoadingMessage("");
@@ -201,14 +205,14 @@ export default function DashboardPage() {
   const handleDownload = async () => {
     await downloadCleanedDataset(datasetId);
   };
-  
+
   if (loadError)
     return (
       <div className="flex flex-col items-center justify-center h-screen bg-[#0f172a] text-white space-y-4">
         <AlertTriangle className="w-12 h-12 text-red-500" />
         <h2 className="text-2xl font-bold">Error Loading Analytics</h2>
         <p className="text-gray-400 max-w-md text-center">{loadError}</p>
-        <button 
+        <button
           onClick={() => window.location.href = '/'}
           className="px-6 py-2 mt-4 bg-indigo-600 hover:bg-indigo-700 font-semibold rounded-lg transition"
         >
@@ -308,6 +312,7 @@ export default function DashboardPage() {
           profile={analytics.profile}
           outlierPercentage={cleanResult ? cleanResult.outlier_pct_after : analytics.outliers?.overall_percentage}
           noisyPercentage={analytics.outliers?.noisy_percentage}
+          cleanResult={cleanResult}
         />
         <MLBadge
           readiness={
@@ -577,6 +582,13 @@ export default function DashboardPage() {
                 );
               })()}
             </div>
+            
+            {cleanResult.warning && (
+              <div className="mb-8 p-4 rounded-xl bg-orange-500/10 border border-orange-500/30 text-orange-400 flex items-center gap-3">
+                <AlertTriangle className="w-5 h-5" />
+                <span className="text-sm font-medium">{cleanResult.warning}</span>
+              </div>
+            )}
 
             {/* BEFORE vs AFTER CHART */}
             <ComparisonChart
@@ -605,21 +617,21 @@ export default function DashboardPage() {
                 </div>
               </motion.div>
 
-                <motion.div
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className={`${correctedWithoutDrops ? 'bg-blue-500/5 border-blue-500/20 shadow-blue-500/5' : 'bg-red-500/5 border-red-500/20 shadow-red-500/5'} rounded-2xl p-8 flex flex-col items-center justify-center text-center space-y-2 transition-colors duration-500`}
-                >
-                  <div className={`p-3 ${correctedWithoutDrops ? 'bg-blue-500/20 text-blue-400' : 'bg-red-500/20 text-red-400'} rounded-full mb-2`}>
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className={`${correctedWithoutDrops ? 'bg-blue-500/5 border-blue-500/20 shadow-blue-500/5' : 'bg-red-500/5 border-red-500/20 shadow-red-500/5'} rounded-2xl p-8 flex flex-col items-center justify-center text-center space-y-2 transition-colors duration-500`}
+              >
+                <div className={`p-3 ${correctedWithoutDrops ? 'bg-blue-500/20 text-blue-400' : 'bg-red-500/20 text-red-400'} rounded-full mb-2`}>
                   {correctedWithoutDrops ? <CheckCircle className="w-6 h-6" /> : <AlertOctagon className="w-6 h-6" />}
-                  </div>
-                  <div className={`text-3xl font-bold ${correctedWithoutDrops ? 'text-blue-400' : 'text-red-400'}`}>
+                </div>
+                <div className={`text-3xl font-bold ${correctedWithoutDrops ? 'text-blue-400' : 'text-red-400'}`}>
                   {correctedWithoutDrops ? pointsFixed : cleanResult.rows_removed}
-                  </div>
-                  <div className="text-gray-400 text-sm font-medium uppercase tracking-widest">
+                </div>
+                <div className="text-gray-400 text-sm font-medium uppercase tracking-widest">
                   {correctedWithoutDrops ? "Data Points Corrected" : "Redundant Rows Stripped"}
-                  </div>
-                </motion.div>
+                </div>
+              </motion.div>
             </div>
 
             {/* DOWNLOAD BUTTON */}
@@ -755,15 +767,15 @@ function ActionToggle({ active, onClick }) {
 
 
 
-function StatsGrid({ profile, outlierPercentage, noisyPercentage }) {
+function StatsGrid({ profile, outlierPercentage, noisyPercentage, cleanResult }) {
   if (!profile) return null;
 
   const stats = [
-    { label: "Rows", value: profile.rows, icon: <ArrowRight className="w-3 h-3" /> },
+    { label: "Rows", value: cleanResult ? cleanResult.rows_after : profile.rows, icon: <ArrowRight className="w-3 h-3" /> },
     { label: "Columns", value: profile.columns, icon: <ArrowRight className="w-3 h-3" /> },
-    { label: "Missing Rows", value: profile.missing_rows, icon: <AlertOctagon className="w-3 h-3" /> },
-    { label: "Missing Cells", value: profile.missing_cells, icon: <FileX className="w-3 h-3" /> },
-    { label: "Duplicates", value: profile.duplicate_count, icon: <AlertOctagon className="w-3 h-3" /> },
+    { label: "Empty Rows", value: cleanResult ? cleanResult.missing_rows_after : (profile.missing_rows ?? 0), icon: <AlertOctagon className="w-3 h-3" /> },
+    { label: "Missing Cells", value: cleanResult ? cleanResult.missing_cells_after : (profile.missing_cells ?? 0), icon: <FileX className="w-3 h-3" /> },
+    { label: "Duplicates", value: cleanResult ? cleanResult.duplicate_count_after : profile.duplicate_count, icon: <AlertOctagon className="w-3 h-3" /> },
     {
       label: "Outlier Percentage",
       value:
@@ -1354,11 +1366,11 @@ function MLSection({ datasetId, columns }) {
                 </div>
               )}
             </div>
-            
+
             {metrics.explainability && !metrics.explainability.error && (
               <div className="mt-10 overflow-hidden bg-white/5 p-6 rounded-2xl border border-white/10">
                 <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-indigo-400"/> SHAP Explainability
+                  <Sparkles className="w-5 h-5 text-indigo-400" /> SHAP Explainability
                 </h3>
                 <div className="grid md:grid-cols-2 gap-8">
                   <div>

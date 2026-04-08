@@ -76,11 +76,20 @@ class OutlierEngine:
             return df_fixed
 
         # Vectorised clipping
-        Q1    = df_fixed[numeric_cols].quantile(0.25)
-        Q3    = df_fixed[numeric_cols].quantile(0.75)
-        IQR   = Q3 - Q1
-        lower = Q1 - 1.5 * IQR
-        upper = Q3 + 1.5 * IQR
+        if method == "mad":
+            medians = df_fixed[numeric_cols].median()
+            abs_diff = (df_fixed[numeric_cols] - medians).abs()
+            mads = abs_diff.median()
+            lower = medians - 3.5 * (mads / 0.6745)
+            upper = medians + 3.5 * (mads / 0.6745)
+        else:
+            # Default to IQR
+            Q1    = df_fixed[numeric_cols].quantile(0.25)
+            Q3    = df_fixed[numeric_cols].quantile(0.75)
+            IQR   = Q3 - Q1
+            lower = Q1 - 1.5 * IQR
+            upper = Q3 + 1.5 * IQR
+            
         df_fixed[numeric_cols] = df_fixed[numeric_cols].clip(lower=lower, upper=upper, axis=1)
         return df_fixed
 
@@ -134,8 +143,8 @@ class OutlierEngine:
     def _hybrid_mask(numeric_df: pd.DataFrame) -> pd.Series:
         if len(numeric_df) < 5:
             return pd.Series(False, index=numeric_df.index)
-        filled = numeric_df.fillna(numeric_df.median())
-
+        filled = numeric_df.fillna(numeric_df.median()).fillna(0)
+        
         if_model  = IsolationForest(contamination=0.05, random_state=42, n_jobs=-1)
         if_preds  = if_model.fit_predict(filled)
 
@@ -149,7 +158,7 @@ class OutlierEngine:
     def _isolation_mask(numeric_df: pd.DataFrame) -> pd.Series:
         if len(numeric_df) < 5:
             return pd.Series(False, index=numeric_df.index)
-        filled = numeric_df.fillna(numeric_df.median())
+        filled = numeric_df.fillna(numeric_df.median()).fillna(0)
         model  = IsolationForest(contamination=0.05, random_state=42, n_jobs=-1)
         preds  = model.fit_predict(filled)
         return pd.Series(preds == -1, index=numeric_df.index)
@@ -158,7 +167,7 @@ class OutlierEngine:
     def _lof_mask(numeric_df: pd.DataFrame) -> pd.Series:
         if len(numeric_df) < 5:
             return pd.Series(False, index=numeric_df.index)
-        filled = numeric_df.fillna(numeric_df.median())
+        filled = numeric_df.fillna(numeric_df.median()).fillna(0)
         n_neighbors = min(20, len(filled) - 1)
         model  = LocalOutlierFactor(n_neighbors=n_neighbors, contamination=0.05, n_jobs=-1)
         preds  = model.fit_predict(filled)

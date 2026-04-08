@@ -34,7 +34,7 @@ def get_profile(dataset_id: int, db: Session = Depends(get_db)):
     df = read_csv(file_path)
     rows = len(df)
     cols = len(df.columns)
-    quality_score, missing_pct, duplicate_pct, _, _ = (
+    quality_score, missing_pct, duplicate_pct, _, _, missing_cells, missing_rows = (
         ScoringEngine.calculate_metrics_and_score(df, "iqr")
     )
 
@@ -43,6 +43,8 @@ def get_profile(dataset_id: int, db: Session = Depends(get_db)):
         columns=cols,
         missing_percentage=round(missing_pct, 2),
         duplicate_percentage=round(duplicate_pct, 2),
+        missing_rows=missing_rows,
+        missing_cells=missing_cells,
         quality_score=quality_score,
         importance=calculate_importance(df),
     )

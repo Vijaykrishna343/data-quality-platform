@@ -53,10 +53,20 @@ class ScoringEngine:
         if total_rows == 0:
             return 0.0, 0.0, 0.0, 0.0, 0.0
             
-        # Optimized Missing Value Calculation (Vectorized)
-        missing_rows = int(df.isna().any(axis=1).sum())
-        missing_cells = int(df.isna().sum().sum())
-        missing_pct = (missing_rows / total_rows) * 100
+        # Use consistent normalization for accurate missing counts
+        clean_df = df.copy()
+        obj_cols = clean_df.select_dtypes(include=['object']).columns
+        if len(obj_cols) > 0:
+            clean_df[obj_cols] = clean_df[obj_cols].apply(lambda col: col.map(lambda x: x.strip() if isinstance(x, str) else x))
+        
+        clean_df.replace(['', 'NA', 'N/A', 'null', 'NULL', 'None', 'none', 'nan'], np.nan, inplace=True)
+        
+        # Accurate Missing Value Calculation (only count a row if ALL cells are missing)
+        missing_rows = int(clean_df.isna().all(axis=1).sum())
+        missing_cells = int(clean_df.isna().sum().sum())
+        
+        total_cells = total_rows * len(df.columns)
+        missing_pct = (missing_cells / total_cells) * 100 if total_cells > 0 else 0.0
         
         # Fuzzy duplicates are already optimized in DuplicateEngine (with sampling)
         dup_indices = DuplicateEngine.detect_fuzzy_duplicates(df, list(df.columns), threshold=95.0)

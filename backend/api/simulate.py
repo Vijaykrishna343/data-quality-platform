@@ -55,10 +55,25 @@ def simulate(
 
     # ── Load ──────────────────────────────────────────────────────────────────
     df_original    = read_csv_optimised(file_path)
+    
+    # Normalize: replace common missing value strings with actual NaNs
+    obj_cols = df_original.select_dtypes(include=['object']).columns
+    if len(obj_cols) > 0:
+        df_original[obj_cols] = df_original[obj_cols].apply(lambda col: col.map(lambda x: x.strip() if isinstance(x, str) else x))
+    
+    df_original.replace(['', 'NA', 'N/A', 'null', 'NULL', 'None', 'none', 'nan', '?', '-'], np.nan, inplace=True)
+    
+    # Try to infer better types (important after NaN replacement)
+    for col in df_original.columns:
+        try:
+            df_original[col] = pd.to_numeric(df_original[col], errors='ignore')
+        except:
+            pass
+            
     original_rows  = len(df_original)
 
     # ── Before score (sampled) ────────────────────────────────────────────────
-    score_before, m_pct_b, d_pct_b, outlier_pct_before, *_ = _score_sample(df_original, "iqr")
+    score_before, m_pct_b, d_pct_b, outlier_pct_before, _, missing_cells_before, missing_rows_before = _score_sample(df_original, "iqr")
 
     payload_data   = payload.model_dump()
     outlier_method = payload_data.get("outlier_method") or "none"
@@ -133,7 +148,14 @@ def simulate(
 
     # ── After score (sampled) ─────────────────────────────────────────────────
     eff_method   = outlier_method if outlier_method != "none" else "iqr"
-    score_after, m_pct_a, d_pct_a, outlier_pct_after, *_ = _score_sample(df_clean, eff_method)
+    score_after, m_pct_a, d_pct_a, outlier_pct_after, _, missing_cells_after, missing_rows_after = _score_sample(df_clean, eff_method)
+
+    # ── Full Dataset Missing Counts (for "Exact" Overview) ─────────────────────
+    missing_rows_before = int(df_original.isna().all(axis=1).sum())
+    missing_cells_before = int(df_original.isna().sum().sum())
+    
+    missing_rows_after = int(df_clean.isna().all(axis=1).sum())
+    missing_cells_after = int(df_clean.isna().sum().sum())
 
     warning_msg  = (
         "Cleaning did not improve data quality" if score_after <= score_before else None
@@ -158,6 +180,10 @@ def simulate(
         rows_before=original_rows,
         rows_after=len(df_clean),
         rows_removed=original_rows - len(df_clean),
+        missing_rows_before=missing_rows_before,
+        missing_rows_after=missing_rows_after,
+        missing_cells_before=missing_cells_before,
+        missing_cells_after=missing_cells_after,
         outlier_pct_before=round(outlier_pct_before, 2),
         outlier_pct_after=round(outlier_pct_after, 2),
         ml_readiness_after={

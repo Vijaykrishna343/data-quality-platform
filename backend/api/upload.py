@@ -174,12 +174,13 @@ def _run_background_pipeline(task_id: str, file_path: str, filename: str):
                 return None
             return obj
 
+        df_clean_na = df.replace(r'^\s*$', np.nan, regex=True)
         result = _clean_nan({
             "profile": {
                 "rows":           len(df),
                 "columns":        len(df.columns),
-                "missing_rows":   int(df.isnull().any(axis=1).sum()),
-                "missing_cells":  int(df.isnull().sum().sum()),
+                "missing_rows":   int(df_clean_na.isnull().all(axis=1).sum()),
+                "missing_cells":  int(df_clean_na.isnull().sum().sum()),
                 "duplicate_count": int(df.duplicated(keep="first").sum()),
                 "quality_score":  round(quality_score, 2),
                 "completeness":   round(completeness, 2),

@@ -29,6 +29,8 @@ class ProfileResponse(BaseModel):
     columns: int
     missing_percentage: float
     duplicate_percentage: float
+    missing_rows: int
+    missing_cells: int
     quality_score: float
     importance: Dict[str, float]
 
@@ -50,6 +52,10 @@ class SimulationResponse(BaseModel):
     rows_before: int
     rows_after: int
     rows_removed: int
+    missing_rows_before: int
+    missing_rows_after: int
+    missing_cells_before: int
+    missing_cells_after: int
     outlier_pct_before: float
     outlier_pct_after: float
     ml_readiness_after: Dict[str, str]
